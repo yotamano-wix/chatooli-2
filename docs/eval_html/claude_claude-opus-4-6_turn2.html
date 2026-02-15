@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Icosahedron + Orbiting Torus Knot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>Three.js Icosahedron</strong><br>
+        + Orbiting Torus Knot<br>
+        Use mouse to orbit, scroll to zoom
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // Camera setup
+        const camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.z = 5;
+
+        // Renderer setup
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Orbit Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 2;
+        controls.maxDistance = 15;
+
+        // Create Icosahedron with wireframe material
+        const icoGeometry = new THREE.IcosahedronGeometry(2, 0);
+        const icoMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            wireframe: true,
+            wireframeLinewidth: 2
+        });
+        const icosahedron = new THREE.Mesh(icoGeometry, icoMaterial);
+        scene.add(icosahedron);
+
+        // Create orbiting Torus Knot
+        const torusKnotGeometry = new THREE.TorusKnotGeometry(0.4, 0.15, 80, 16);
+        const torusKnotMaterial = new THREE.MeshStandardMaterial({
+            color: 0xff3399,
+            emissive: 0xff3399,
+            emissiveIntensity: 0.3,
+            metalness: 0.7,
+            roughness: 0.2,
+        });
+        const torusKnot = new THREE.Mesh(torusKnotGeometry, torusKnotMaterial);
+
+        // Pivot group for orbital motion
+        const orbitPivot = new THREE.Group();
+        scene.add(orbitPivot);
+
+        // Position the torus knot at orbital distance
+        const orbitRadius = 3.5;
+        torusKnot.position.x = orbitRadius;
+        orbitPivot.add(torusKnot);
+
+        // Add a faint orbit trail ring for visual reference
+        const orbitRingGeometry = new THREE.RingGeometry(orbitRadius - 0.02, orbitRadius + 0.02, 128);
+        const orbitRingMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff3399,
+            transparent: true,
+            opacity: 0.12,
+            side: THREE.DoubleSide
+        });
+        const orbitRing = new THREE.Mesh(orbitRingGeometry, orbitRingMaterial);
+        orbitRing.rotation.x = Math.PI / 2;
+        scene.add(orbitRing);
+
+        // Add ambient lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        // Add point light
+        const pointLight = new THREE.PointLight(0xffffff, 1.5);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+
+        // Second point light for better torus knot shading
+        const pointLight2 = new THREE.PointLight(0xff66bb, 0.8);
+        pointLight2.position.set(-5, -3, 3);
+        scene.add(pointLight2);
+
+        // Animation variables
+        const icoRotationSpeed = 0.005;
+        const orbitSpeed = 0.008;
+        const torusKnotSpinSpeed = 0.02;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Rotate the icosahedron
+            icosahedron.rotation.x += icoRotationSpeed;
+            icosahedron.rotation.y += icoRotationSpeed;
+
+            // Orbit the torus knot around the icosahedron
+            orbitPivot.rotation.y += orbitSpeed;
+            // Slight tilt on the orbit for a more dynamic look
+            orbitPivot.rotation.x = Math.sin(Date.now() * 0.0003) * 0.3;
+
+            // Spin the torus knot on its own axis
+            torusKnot.rotation.x += torusKnotSpinSpeed;
+            torusKnot.rotation.z += torusKnotSpinSpeed * 0.7;
+
+            // Gently bob the torus knot up and down
+            torusKnot.position.y = Math.sin(Date.now() * 0.001) * 0.3;
+
+            // Match the orbit ring tilt to the pivot
+            orbitRing.rotation.x = Math.PI / 2 + orbitPivot.rotation.x;
+
+            // Update controls
+            controls.update();
+
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>

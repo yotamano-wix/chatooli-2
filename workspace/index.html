@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinetic Kerning</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0a0a0a;
+      color: #ffffff;
+      overflow: hidden;
+      display: flex;
+      height: 100vh;
+    }
+
+    #canvas {
+      flex: 1;
+      cursor: pointer;
+      display: block;
+    }
+
+    .controls {
+      width: 320px;
+      background: #111;
+      padding: 24px;
+      overflow-y: auto;
+      border-left: 1px solid #222;
+    }
+
+    .control-group {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      color: #888;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #555;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+
+    .value-display {
+      display: inline-block;
+      float: right;
+      font-size: 11px;
+      color: #666;
+      font-weight: 400;
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    input[type="checkbox"] {
+      width: 40px;
+      height: 22px;
+      background: #333;
+      border-radius: 11px;
+      position: relative;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      outline: none;
+      transition: background 0.2s;
+    }
+
+    input[type="checkbox"]:checked {
+      background: #fff;
+    }
+
+    input[type="checkbox"]::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+    }
+
+    input[type="checkbox"]:checked::before {
+      background: #0a0a0a;
+      transform: translateX(18px);
+    }
+
+    input[type="color"] {
+      width: 100%;
+      height: 40px;
+      border: 1px solid #333;
+      border-radius: 6px;
+      background: #1a1a1a;
+      cursor: pointer;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #fff;
+      color: #0a0a0a;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #e0e0e0;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .hint {
+      font-size: 10px;
+      color: #555;
+      margin-top: 16px;
+      line-height: 1.4;
+    }
+
+    h1 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin: 32px 0 16px;
+      padding-top: 16px;
+      border-top: 1px solid #1a1a1a;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <div class="controls">
+    <h1>Kinetic Kerning</h1>
+    
+    <div class="control-group">
+      <label>Headline A</label>
+      <input type="text" id="textA" value="VELOCITY">
+    </div>
+
+    <div class="control-group">
+      <label>Headline B</label>
+      <input type="text" id="textB" value="BALANCE">
+    </div>
+
+    <div class="control-group">
+      <button id="transitionBtn">Trigger Transition</button>
+    </div>
+
+    <div class="section-title">Typography</div>
+
+    <div class="control-group">
+      <label>Font Size <span class="value-display" id="fontSizeVal">96</span></label>
+      <input type="range" id="fontSize" min="48" max="200" value="96">
+    </div>
+
+    <div class="control-group">
+      <label>Font Weight <span class="value-display" id="fontWeightVal">700</span></label>
+      <input type="range" id="fontWeight" min="300" max="900" step="100" value="700">
+    </div>
+
+    <div class="control-group">
+      <label>Text Color</label>
+      <input type="color" id="textColor" value="#ffffff">
+    </div>
+
+    <div class="section-title">Motion</div>
+
+    <div class="control-group">
+      <label>Transition Style</label>
+      <select id="transitionStyle">
+        <option value="slide">Slide</option>
+        <option value="scatter">Scatter</option>
+        <option value="drop">Drop</option>
+        <option value="rise">Rise</option>
+        <option value="crossfade">Crossfade</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Duration <span class="value-display" id="durationVal">800ms</span></label>
+      <input type="range" id="transitionDuration" min="200" max="2000" step="50" value="800">
+    </div>
+
+    <div class="control-group">
+      <label>Stagger <span class="value-display" id="staggerVal">40</span></label>
+      <input type="range" id="staggerAmount" min="0" max="100" value="40">
+    </div>
+
+    <div class="control-group">
+      <label>Stagger Direction</label>
+      <select id="staggerDirection">
+        <option value="left_to_right">Left to Right</option>
+        <option value="right_to_left">Right to Left</option>
+        <option value="center_out">Center Out</option>
+        <option value="edges_in">Edges In</option>
+        <option value="random">Random</option>
+      </select>
+    </div>
+
+    <div class="section-title">Compensation</div>
+
+    <div class="control-group">
+      <label>Compensation Intensity <span class="value-display" id="compensationVal">60</span></label>
+      <input type="range" id="compensationIntensity" min="0" max="100" value="60">
+    </div>
+
+    <div class="control-group">
+      <label>Settling Feel <span class="value-display" id="settlingVal">50</span></label>
+      <input type="range" id="settlingStiffness" min="0" max="100" value="50">
+    </div>
+
+    <div class="control-group">
+      <label class="toggle-container">
+        <input type="checkbox" id="showDebug">
+        <span>Show Metrics</span>
+      </label>
+    </div>
+
+    <p class="hint">
+      Click canvas or button to trigger transition. Compensation adjusts spacing based on per-glyph velocity to maintain optical balance during motion.
+    </p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Resize canvas
+    function resizeCanvas() {
+      canvas.width = canvas.clientWidth * devicePixelRatio;
+      canvas.height = canvas.clientHeight * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // State
+    let params = {
+      textA: 'VELOCITY',
+      textB: 'BALANCE',
+      fontSize: 96,
+      fontWeight: 700,
+      textColor: '#ffffff',
+      transitionStyle: 'slide',
+      transitionDuration: 800,
+      staggerAmount: 40,
+      staggerDirection: 'left_to_right',
+      compensationIntensity: 60,
+      settlingStiffness: 50,
+      showDebug: false
+    };
+
+    let currentState = 'A'; // 'A' or 'B'
+    let glyphs = [];
+    let isAnimating = false;
+    let animationStartTime = 0;
+    let previousTime = 0;
+
+    // Optical density lookup
+    const OPEN_CHARS = 'AVWTYLOCGQ/\\';
+    const CLOSED_CHARS = 'HIMNBDPREKFUXZS|';
+    
+    function getOpticalFactor(char1, char2) {
+      const right = OPEN_CHARS.includes(char1.toUpperCase()) ? 'OPEN' : 'CLOSED';
+      const left = OPEN_CHARS.includes(char2.toUpperCase()) ? 'OPEN' : 'CLOSED';
+      
+      if (char1 === ' ' || char2 === ' ') return 0;
+      if (right === 'OPEN' && left === 'OPEN') return 1.5;
+      if (right === 'OPEN' || left === 'OPEN') return 1.2;
+      return 0.8;
+    }
+
+    // Glyph class
+    class Glyph {
+      constructor(char, x, y, index) {
+        this.char = char;
+        this.x = x;
+        this.y = y;
+        this.startX = x;
+        this.startY = y;
+        this.targetX = x;
+        this.targetY = y;
+        this.index = index;
+        this.opacity = 1;
+        this.velocity = { x: 0, y: 0 };
+        this.prevX = x;
+        this.prevY = y;
+        this.kernOffset = 0;
+        this.kernOffsetVel = 0;
+        this.targetKernOffset = 0;
+        this.animProgress = 0;
+        this.delay = 0;
+      }
+
+      update(deltaTime, smoothingFactor = 0.2) {
+        // Calculate raw velocity
+        const rawVx = (this.x - this.prevX) / deltaTime;
+        const rawVy = (this.y - this.prevY) / deltaTime;
+        
+        // Smooth velocity
+        this.velocity.x = this.velocity.x * (1 - smoothingFactor) + rawVx * smoothingFactor;
+        this.velocity.y = this.velocity.y * (1 - smoothingFactor) + rawVy * smoothingFactor;
+        
+        this.prevX = this.x;
+        this.prevY = this.y;
+      }
+
+      updateKernOffset(targetOffset, stiffness, damping, deltaTime) {
+        // Spring damper system
+        const springForce = stiffness * (targetOffset - this.kernOffset);
+        const dampingForce = damping * this.kernOffsetVel;
+        const acceleration = springForce - dampingForce;
+        
+        this.kernOffsetVel += acceleration * deltaTime;
+        this.kernOffset += this.kernOffsetVel * deltaTime;
+        
+        // Stability check
+        if (Math.abs(this.kernOffsetVel) < 0.01 && Math.abs(targetOffset - this.kernOffset) < 0.1) {
+          this.kernOffset = targetOffset;
+          this.kernOffsetVel = 0;
+        }
+      }
+    }
+
+    // Measure text and create glyphs
+    function createGlyphs(text) {
+      const glyphArray = [];
+      ctx.font = `${params.fontWeight} ${params.fontSize}px "Space Grotesk", sans-serif`;
+      
+      let x = 0;
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const metrics = ctx.measureText(char);
+        const centerX = canvas.clientWidth / 2;
+        const centerY = canvas.clientHeight / 2;
+        
+        const glyph = new Glyph(char, centerX + x, centerY, i);
+        glyphArray.push(glyph);
+        
+        x += metrics.width;
+      }
+      
+      // Center the text
+      const totalWidth = x;
+      glyphArray.forEach(g => {
+        g.x -= totalWidth / 2;
+        g.startX = g.x;
+        g.prevX = g.x;
+      });
+      
+      return glyphArray;
+    }
+
+    // Get stagger order
+    function getStaggerOrder(glyphArray) {
+      const order = [];
+      const len = glyphArray.length;
+      
+      switch (params.staggerDirection) {
+        case 'left_to_right':
+          for (let i = 0; i < len; i++) order.push(i);
+          break;
+        case 'right_to_left':
+          for (let i = len - 1; i >= 0; i--) order.push(i);
+          break;
+        case 'center_out':
+          const center = Math.floor(len / 2);
+          for (let i = 0; i < len; i++) {
+            const offset = Math.floor(i / 2);
+            const idx = i % 2 === 0 ? center + offset : center - offset - 1;
+            if (idx >= 0 && idx < len) order.push(idx);
+          }
+          break;
+        case 'edges_in':
+          for (let i = 0; i < Math.ceil(len / 2); i++) {
+            order.push(i);
+            if (len - 1 - i !== i) order.push(len - 1 - i);
+          }
+          break;
+        case 'random':
+          for (let i = 0; i < len; i++) order.push(i);
+          for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+          }
+          break;
+      }
+      
+      return order;
+    }
+
+    // Easing function
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    // Transition
+    function startTransition() {
+      if (isAnimating) return;
+      
+      isAnimating = true;
+      animationStartTime = performance.now();
+      previousTime = animationStartTime;
+      
+      const exitText = currentState === 'A' ? params.textA : params.textB;
+      const entryText = currentState === 'A' ? params.textB : params.textA;
+      
+      // Create exit glyphs
+      const exitGlyphs = createGlyphs(exitText);
+      const exitOrder = getStaggerOrder(exitGlyphs);
+      const maxDelay = params.staggerAmount * 0.01 * params.transitionDuration * 0.3;
+      
+      exitGlyphs.forEach((g, i) => {
+        const orderIndex = exitOrder.indexOf(i);
+        g.delay = orderIndex * (maxDelay / exitGlyphs.length);
+        
+        // Set exit targets based on transition style
+        const centerX = canvas.clientWidth / 2;
+        const centerY = canvas.clientHeight / 2;
+        
+        switch (params.transitionStyle) {
+          case 'slide':
+            g.targetX = -canvas.clientWidth / 2;
+            g.targetY = g.y;
+            break;
+          case 'scatter':
+            const angle = Math.random() * Math.PI * 2;
+            const distance = canvas.clientWidth * 0.8;
+            g.targetX = g.x + Math.cos(angle) * distance;
+            g.targetY = g.y + Math.sin(angle) * distance;
+            break;
+          case 'drop':
+            g.targetX = g.x + (Math.random() - 0.5) * 100;
+            g.targetY = canvas.clientHeight;
+            break;
+          case 'rise':
+            g.targetX = g.x + (Math.random() - 0.5) * 100;
+            g.targetY = -canvas.clientHeight / 2;
+            break;
+          case 'crossfade':
+            g.targetX = g.x;
+            g.targetY = g.y;
+            break;
+        }
+      });
+      
+      // Create entry glyphs
+      const entryGlyphs = createGlyphs(entryText);
+      const entryOrder = getStaggerOrder(entryGlyphs);
+      
+      entryGlyphs.forEach((g, i) => {
+        const orderIndex = entryOrder.indexOf(i);
+        g.delay = orderIndex * (maxDelay / entryGlyphs.length) + params.transitionDuration * 0.4;
+        
+        const finalX = g.x;
+        const finalY = g.y;
+        
+        // Set entry start positions
+        switch (params.transitionStyle) {
+          case 'slide':
+            g.x = canvas.clientWidth * 1.5;
+            g.startX = g.x;
+            break;
+          case 'scatter':
+            const angle = Math.random() * Math.PI * 2;
+            const distance = canvas.clientWidth * 0.8;
+            g.x = finalX + Math.cos(angle) * distance;
+            g.y = finalY + Math.sin(angle) * distance;
+            g.startX = g.x;
+            g.startY = g.y;
+            break;
+          case 'drop':
+            g.x = finalX + (Math.random() - 0.5) * 100;
+            g.y = -canvas.clientHeight / 2;
+            g.startX = g.x;
+            g.startY = g.y;
+            break;
+          case 'rise':
+            g.x = finalX + (Math.random() - 0.5) * 100;
+            g.y = canvas.clientHeight;
+            g.startX = g.x;
+            g.startY = g.y;
+            break;
+          case 'crossfade':
+            g.opacity = 0;
+            break;
+        }
+        
+        g.targetX = finalX;
+        g.targetY = finalY;
+        g.prevX = g.x;
+        g.prevY = g.y;
+      });
+      
+      glyphs = [...exitGlyphs.map(g => ({ ...g, isExit: true })), 
+               ...entryGlyphs.map(g => ({ ...g, isExit: false }))];
+      
+      currentState = currentState === 'A' ? 'B' : 'A';
+      animate();
+    }
+
+    // Animation loop
+    function animate(currentTime = 0) {
+      if (!isAnimating) return;
+      
+      const elapsed = currentTime - animationStartTime;
+      const deltaTime = Math.max(0.016, (currentTime - previousTime) / 1000);
+      previousTime = currentTime;
+      
+      let allSettled = true;
+      
+      // Update glyph positions
+      glyphs.forEach(g => {
+        const localElapsed = Math.max(0, elapsed - g.delay);
+        const duration = params.transitionDuration;
+        let progress = Math.min(1, localElapsed / duration);
+        
+        if (progress < 1) {
+          allSettled = false;
+          progress = easeInOutQuad(progress);
+          g.x = g.startX + (g.targetX - g.startX) * progress;
+          g.y = g.startY + (g.targetY - g.startY) * progress;
+          
+          if (params.transitionStyle === 'crossfade') {
+            g.opacity = g.isExit ? 1 - progress : progress;
+          } else {
+            g.opacity = g.isExit ? 1 - progress : Math.min(1, progress * 2);
+          }
+        } else {
+          g.x = g.targetX;
+          g.y = g.targetY;
+          g.opacity = g.isExit ? 0 : 1;
+        }
+        
+        g.update(deltaTime);
+      });
+      
+      // Calculate compensation
+      const activeGlyphs = glyphs.filter(g => g.opacity > 0.01);
+      const stiffnessRange = [80, 800];
+      const stiffness = stiffnessRange[0] + (stiffnessRange[1] - stiffnessRange[0]) * 
+                        Math.pow(params.settlingStiffness / 100, 2);
+      const damping = 2 * Math.sqrt(stiffness);
+      
+      for (let i = 0; i < activeGlyphs.length - 1; i++) {
+        const g1 = activeGlyphs[i];
+        const g2 = activeGlyphs[i + 1];
+        
+        const diffVelocity = g2.velocity.x - g1.velocity.x;
+        const opticalFactor = getOpticalFactor(g1.char, g2.char);
+        const scaleFactor = params.fontSize / 100;
+        
+        const targetOffset = (params.compensationIntensity / 100) * 
+                            diffVelocity * opticalFactor * scaleFactor * 50;
+        
+        g2.updateKernOffset(targetOffset, stiffness, damping, deltaTime);
+        
+        if (Math.abs(g2.kernOffsetVel) > 0.01) {
+          allSettled = false;
+        }
+      }
+      
+      // Render
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      ctx.font = `${params.fontWeight} ${params.fontSize}px "Space Grotesk", sans-serif`;
+      ctx.textBaseline = 'middle';
+      
+      // Group by exit/entry for proper layering
+      const exitGlyphs = activeGlyphs.filter(g => g.isExit);
+      const entryGlyphs = activeGlyphs.filter(g => !g.isExit);
+      
+      [exitGlyphs, entryGlyphs].forEach(group => {
+        let cumulativeOffset = 0;
+        group.forEach(g => {
+          ctx.save();
+          ctx.globalAlpha = g.opacity;
+          ctx.fillStyle = params.textColor;
+          ctx.fillText(g.char, g.x + cumulativeOffset, g.y);
+          ctx.restore();
+          
+          cumulativeOffset += g.kernOffset;
+        });
+      });
+      
+      // Debug visualization
+      if (params.showDebug) {
+        activeGlyphs.forEach((g, i) => {
+          // Velocity arrow
+          const arrowScale = 5;
+          const vx = g.velocity.x * arrowScale;
+          const vy = g.velocity.y * arrowScale;
+          
+          if (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1) {
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(g.x, g.y);
+            ctx.lineTo(g.x + vx, g.y + vy);
+            ctx.stroke();
+            
+            // Arrowhead
+            const angle = Math.atan2(vy, vx);
+            ctx.beginPath();
+            ctx.moveTo(g.x + vx, g.y + vy);
+            ctx.lineTo(g.x + vx - 8 * Math.cos(angle - 0.3), g.y + vy - 8 * Math.sin(angle - 0.3));
+            ctx.lineTo(g.x + vx - 8 * Math.cos(angle + 0.3), g.y + vy - 8 * Math.sin(angle + 0.3));
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
+            ctx.fill();
+          }
+          
+          // Kern offset bars
+          if (i < activeGlyphs.length - 1 && !g.isExit && !activeGlyphs[i + 1].isExit) {
+            const nextG = activeGlyphs[i + 1];
+            const metrics = ctx.measureText(g.char);
+            const barX = g.x + metrics.width / 2;
+            const barHeight = Math.abs(nextG.kernOffset) * 2;
+            const barY = g.y + params.fontSize / 2 + 10;
+            
+            ctx.fillStyle = nextG.kernOffset > 0 ? 'rgba(0, 255, 0, 0.4)' : 'rgba(255, 0, 0, 0.4)';
+            ctx.fillRect(barX, barY, Math.max(2, barHeight), 4);
+          }
+        });
+      }
+      
+      if (!allSettled || elapsed < params.transitionDuration * 1.5) {
+        requestAnimationFrame(animate);
+      } else {
+        isAnimating = false;
+        glyphs = glyphs.filter(g => !g.isExit);
+      }
+    }
+
+    // Initial render
+    glyphs = createGlyphs(params.textA);
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.font = `${params.fontWeight} ${params.fontSize}px "Space Grotesk", sans-serif`;
+    ctx.fillStyle = params.textColor;
+    ctx.textBaseline = 'middle';
+    
+    glyphs.forEach(g => {
+      ctx.fillText(g.char, g.x, g.y);
+    });
+
+    // Event listeners
+    canvas.addEventListener('click', startTransition);
+    document.getElementById('transitionBtn').addEventListener('click', startTransition);
+
+    // Parameter controls
+    document.getElementById('textA').addEventListener('input', (e) => {
+      params.textA = e.target.value.toUpperCase();
+      if (currentState === 'A' && !isAnimating) {
+        glyphs = createGlyphs(params.textA);
+        ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        ctx.font = `${params.fontWeight} ${params.fontSize}px "Space Grotesk", sans-serif`;
+        ctx.fillStyle = params.textColor;
+        glyphs.forEach(g => ctx.fillText(g.char, g.x, g.y));
+      }
+    });
+
+    document.getElementById('textB').addEventListener('input', (e) => {
+      params.textB = e.target.value.toUpperCase();
+      if (currentState === 'B' && !isAnimating) {
+        glyphs = createGlyphs(params.textB);
+        ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        ctx.font = `${params.fontWeight} ${params.fontSize}px "Space Grotesk", sans-serif`;
+        ctx.fillStyle = params.textColor;
+        glyphs.forEach(g => ctx.fillText(g.char, g.x, g.y));
+      }
+    });
+
+    document.getElementById('fontSize').addEventListener('input', (e) => {
+      params.fontSize = parseInt(e.target.value);
+      document.getElementById('fontSizeVal').textContent = params.fontSize;
+      if (!isAnimating) {
+        const text = currentState === 'A' ? params.textA : params.textB;
+        glyphs = createGlyphs(text);
+        ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        ctx.font = `${params.fontWeight} ${params.fontSize}px "Space Grotesk", sans-serif`;
+        ctx.fillStyle = params.textColor;
+        glyphs.forEach(g => ctx.fillText(g.char, g.x, g.y));
+      }
+    });
+
+    document.getElementById('fontWeight').addEventListener('input', (e) => {
+      params.fontWeight = parseInt(e.target.value);
+      document.getElementById('fontWeightVal').textContent = params.fontWeight;
+    });
+
+    document.getElementById('textColor').addEventListener('input', (e) => {
+      params.textColor = e.target.value;
+    });
+
+    document.getElementById('transitionStyle').addEventListener('change', (e) => {
+      params.transitionStyle = e.target.value;
+    });
+
+    document.getElementById('transitionDuration').addEventListener('input', (e) => {
+      params.transitionDuration = parseInt(e.target.value);
+      document.getElementById('durationVal').textContent = params.transitionDuration + 'ms';
+    });
+
+    document.getElementById('staggerAmount').addEventListener('input', (e) => {
+      params.staggerAmount = parseInt(e.target.value);
+      document.getElementById('staggerVal').textContent = params.staggerAmount;
+    });
+
+    document.getElementById('staggerDirection').addEventListener('change', (e) => {
+      params.staggerDirection = e.target.value;
+    });
+
+    document.getElementById('compensationIntensity').addEventListener('input', (e) => {
+      params.compensationIntensity = parseInt(e.target.value);
+      document.getElementById('compensationVal').textContent = params.compensationIntensity;
+    });
+
+    document.getElementById('settlingStiffness').addEventListener('input', (e) => {
+      params.settlingStiffness = parseInt(e.target.value);
+      document.getElementById('settlingVal').textContent = params.settlingStiffness;
+    });
+
+    document.getElementById('showDebug').addEventListener('change', (e) => {
+      params.showDebug = e.target.checked;
+    });
+
+    // Load Google Font
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+  </script>
+</body>
+</html>

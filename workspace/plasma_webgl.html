@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebGL Plasma Shader (Fullscreen)</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    canvas { width: 100%; height: 100%; display: block; }
+    #hint {
+      position: fixed;
+      left: 12px;
+      bottom: 10px;
+      color: rgba(255,255,255,0.75);
+      font: 12px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      user-select: none;
+      pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.75);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hint">WebGL plasma — resize window; press F11 for true fullscreen.</div>
+
+  <!-- Vertex shader: fullscreen quad via two triangles in clip space -->
+  <script id="vs" type="x-shader/x-vertex">
+    attribute vec2 a_pos;
+    varying vec2 v_uv;
+    void main() {
+      v_uv = a_pos * 0.5 + 0.5;
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+    }
+  </script>
+
+  <!-- Fragment shader: animated plasma waves -->
+  <script id="fs" type="x-shader/x-fragment">
+    precision highp float;
+
+    uniform vec2 u_res;
+    uniform float u_time;
+    varying vec2 v_uv;
+
+    // Simple palette function for smooth colors
+    vec3 palette(float t) {
+      // cosine palette (Inigo Quilez style)
+      vec3 a = vec3(0.50, 0.50, 0.50);
+      vec3 b = vec3(0.50, 0.50, 0.50);
+      vec3 c = vec3(1.00, 1.00, 1.00);
+      vec3 d = vec3(0.00, 0.10, 0.20);
+      return a + b * cos(6.2831853 * (c * t + d));
+    }
+
+    void main() {
+      // Normalized pixel coords (centered), correct for aspect ratio
+      vec2 p = (gl_FragCoord.xy * 2.0 - u_res.xy) / u_res.y;
+
+      float t = u_time;
+
+      // Plasma: sum of warped sines + radial component
+      float v = 0.0;
+
+      // Base waves
+      v += sin(p.x * 3.0 + t * 1.2);
+      v += sin(p.y * 4.0 - t * 1.0);
+      v += sin((p.x + p.y) * 3.5 + t * 0.7);
+
+      // Radial wave from origin
+      float r = length(p);
+      v += sin(r * 10.0 - t * 2.0);
+
+      // Domain warp for richer motion
+      vec2 q = p;
+      q.x += 0.25 * sin(2.0 * p.y + t * 1.7);
+      q.y += 0.25 * sin(2.0 * p.x - t * 1.3);
+      v += sin(q.x * 5.0 + t * 0.9);
+      v += sin(q.y * 5.0 - t * 1.1);
+
+      // Normalize and shape
+      v = v / 6.0;               // roughly -1..1
+      float m = 0.5 + 0.5 * v;   // 0..1
+      m = pow(m, 1.1);
+
+      // Color
+      vec3 col = palette(m + 0.15 * sin(t * 0.2));
+
+      // Subtle vignette
+      float vig = smoothstep(1.25, 0.2, r);
+      col *= 0.25 + 0.75 * vig;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  </script>
+
+  <script>
+    (function() {
+      const canvas = document.getElementById('c');
+      /** @type {WebGLRenderingContext} */
+      const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: false });
+      if (!gl) {
+        document.body.innerHTML = '<pre style="color:#fff;padding:16px">WebGL not supported.</pre>';
+        return;
+      }
+
+      function compileShader(type, source) {
+        const sh = gl.createShader(type);
+        gl.shaderSource(sh, source);
+        gl.compileShader(sh);
+        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(sh);
+          console.error(info);
+          console.error(source.split('\n').map((l,i)=>String(i+1).padStart(4,' ')+': '+l).join('\n'));
+          gl.deleteShader(sh);
+          throw new Error('Shader compile failed: ' + info);
+        }
+        return sh;
+      }
+
+      function createProgram(vsSource, fsSource) {
+        const vs = compileShader(gl.VERTEX_SHADER, vsSource);
+        const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(prog);
+          gl.deleteProgram(prog);
+          throw new Error('Program link failed: ' + info);
+        }
+        return prog;
+      }
+
+      const vsSource = document.getElementById('vs').textContent;
+      const fsSource = document.getElementById('fs').textContent;
+      const program = createProgram(vsSource, fsSource);
+      gl.useProgram(program);
+
+      // Fullscreen quad (2 triangles) in clip space
+      const posLoc = gl.getAttribLocation(program, 'a_pos');
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1,
+      ]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+      const uResLoc = gl.getUniformLocation(program, 'u_res');
+      const uTimeLoc = gl.getUniformLocation(program, 'u_time');
+
+      // Resize handling with devicePixelRatio
+      function resize() {
+        const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        const w = Math.floor(canvas.clientWidth * dpr);
+        const h = Math.floor(canvas.clientHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          gl.viewport(0, 0, w, h);
+        }
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+
+      const t0 = performance.now();
+      function frame(now) {
+        resize();
+        const time = (now - t0) * 0.001;
+        gl.uniform2f(uResLoc, canvas.width, canvas.height);
+        gl.uniform1f(uTimeLoc, time);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>

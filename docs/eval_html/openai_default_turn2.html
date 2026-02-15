@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Icosahedron + Orbiting Torus Knot</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07080b; }
+    canvas { display:block; }
+    .hint{
+      position: fixed; left: 12px; bottom: 12px;
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      color: rgba(255,255,255,.75);
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.08);
+      padding: 8px 10px;
+      border-radius: 10px;
+      backdrop-filter: blur(6px);
+      user-select: none;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="hint">Drag: orbit • Wheel: zoom • Move mouse: subtle wobble</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // --- Renderer ---
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    // --- Scene / Camera ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x07080b);
+
+    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+    camera.position.set(0, 1.2, 7);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+
+    // --- Lights ---
+    scene.add(new THREE.AmbientLight(0x7a86ff, 0.35));
+
+    const key = new THREE.DirectionalLight(0xffffff, 1.3);
+    key.position.set(3, 4, 3);
+    scene.add(key);
+
+    const rim = new THREE.DirectionalLight(0x5fffd9, 0.8);
+    rim.position.set(-4, 1, -3);
+    scene.add(rim);
+
+    // --- Main object: Icosahedron ---
+    const icoGeo = new THREE.IcosahedronGeometry(1.25, 2);
+
+    const icoMat = new THREE.MeshStandardMaterial({
+      color: 0x7c63ff,
+      metalness: 0.55,
+      roughness: 0.18,
+      emissive: 0x120a2a,
+      emissiveIntensity: 0.55
+    });
+
+    const icosahedron = new THREE.Mesh(icoGeo, icoMat);
+    icosahedron.castShadow = false;
+    icosahedron.receiveShadow = false;
+    scene.add(icosahedron);
+
+    // Subtle wire overlay for detail
+    const wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(icoGeo),
+      new THREE.LineBasicMaterial({ color: 0x9aa2ff, transparent: true, opacity: 0.22 })
+    );
+    wire.scale.setScalar(1.002);
+    icosahedron.add(wire);
+
+    // --- NEW: Smaller torus knot orbiting around the icosahedron ---
+    const knotGeo = new THREE.TorusKnotGeometry(0.35, 0.12, 220, 18, 2, 3);
+
+    // Different color than the icosahedron
+    const knotMat = new THREE.MeshStandardMaterial({
+      color: 0xff3fa8,        // pink/magenta
+      metalness: 0.85,
+      roughness: 0.22,
+      emissive: 0x2b0016,
+      emissiveIntensity: 0.9
+    });
+
+    const orbitingKnot = new THREE.Mesh(knotGeo, knotMat);
+    scene.add(orbitingKnot);
+
+    // Optional: a faint trail ring (helps read the orbit)
+    const orbitRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.35, 0.006, 8, 256),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08 })
+    );
+    orbitRing.rotation.x = Math.PI * 0.5;
+    scene.add(orbitRing);
+
+    // --- Post: Bloom (makes emissive pop) ---
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.0, 0.45, 0.85);
+    composer.addPass(bloom);
+
+    // --- Interaction (mouse -> subtle wobble) ---
+    const mouse = new THREE.Vector2(0.5, 0.5);
+    window.addEventListener('pointermove', (e) => {
+      mouse.x = e.clientX / innerWidth;
+      mouse.y = 1.0 - e.clientY / innerHeight;
+    }, { passive: true });
+
+    // --- Animate ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Icosahedron motion
+      icosahedron.rotation.y = t * 0.35 + (mouse.x - 0.5) * 0.35;
+      icosahedron.rotation.x = Math.sin(t * 0.6) * 0.08 + (mouse.y - 0.5) * 0.22;
+
+      // Orbit parameters
+      const orbitRadius = 2.35;
+      const orbitSpeed  = 0.9;
+      const tilt = 0.45 + (mouse.y - 0.5) * 0.35;
+
+      // Tilt the orbit ring and the orbit plane together
+      orbitRing.rotation.x = Math.PI * 0.5 + tilt * 0.35;
+      orbitRing.rotation.z = Math.sin(t * 0.25) * 0.1;
+
+      // Orbiting torus knot around the icosahedron
+      const a = t * orbitSpeed;
+
+      // Build an orbit in a slightly tilted plane
+      const x = Math.cos(a) * orbitRadius;
+      const z = Math.sin(a) * orbitRadius;
+      const y = Math.sin(a * 1.7) * 0.25; // small vertical bob
+
+      orbitingKnot.position.set(x, y, z);
+
+      // Apply a plane tilt (rotate position around X axis)
+      orbitingKnot.position.applyAxisAngle(new THREE.Vector3(1, 0, 0), tilt);
+
+      // Spin the knot itself for extra life
+      orbitingKnot.rotation.x = t * 1.4;
+      orbitingKnot.rotation.y = t * 1.1;
+      orbitingKnot.rotation.z = t * 0.7;
+
+      controls.update();
+      composer.render();
+    }
+    animate();
+
+    // --- Resize ---
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+      bloom.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+crewai[tools]>=0.108.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-dotenv>=1.0.0
+sse-starlette>=2.2.0
+pydantic>=2.0.0
+openai-agents>=0.7.0
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+langchain-anthropic>=0.2.0
+langchain-google-genai>=2.0.0
+anthropic>=0.39.0
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+# Optional: OpenHands (pip install openhands-sdk openhands-tools)
+# openhands-sdk
+# openhands-tools

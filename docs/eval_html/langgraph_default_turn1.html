@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Three.js Rotating Icosahedron (Wireframe)</title>
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    canvas { display: block; }
+    .hud{
+      position: fixed;
+      left: 12px; top: 12px;
+      color: rgba(255,255,255,0.8);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      user-select: none;
+      pointer-events: none;
+      text-shadow: 0 2px 16px rgba(0,0,0,0.6);
+    }
+    .hint { opacity: 0.75; margin-top: 6px; }
+    kbd{
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      padding: 1px 6px;
+      border-radius: 6px;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    Rotating Icosahedron (wireframe)
+    <div class="hint">Drag to orbit • Scroll to zoom • <kbd>Space</kbd> toggle auto-rotate</div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(0, 0.6, 3.2);
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Controls (interactive)
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 0.8;
+
+    // Subtle lighting to help edges pop if you switch materials later
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+    dir.position.set(3, 4, 2);
+    scene.add(dir);
+
+    // Icosahedron (wireframe)
+    const geometry = new THREE.IcosahedronGeometry(1, 1);
+
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x7dd3ff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.95
+    });
+
+    const ico = new THREE.Mesh(geometry, material);
+    scene.add(ico);
+
+    // Optional: add faint glow-ish overlay via additive line segments
+    const edges = new THREE.EdgesGeometry(geometry, 20);
+    const edgeLines = new THREE.LineSegments(
+      edges,
+      new THREE.LineBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.25 })
+    );
+    ico.add(edgeLines);
+
+    // Interaction: mouse influence (subtle tilt)
+    const mouse = new THREE.Vector2(0, 0);
+    let hasPointer = false;
+
+    function setPointerFromEvent(e) {
+      const x = (e.clientX / innerWidth) * 2 - 1;
+      const y = (e.clientY / innerHeight) * 2 - 1;
+      mouse.set(x, y);
+      hasPointer = true;
+    }
+
+    window.addEventListener('pointermove', (e) => setPointerFromEvent(e), { passive: true });
+    window.addEventListener('pointerdown', (e) => setPointerFromEvent(e), { passive: true });
+    window.addEventListener('pointerleave', () => { hasPointer = false; }, { passive: true });
+
+    // Animation loop
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+      const dt = clock.getDelta();
+
+      // Base rotation
+      ico.rotation.y += dt * 0.55;
+      ico.rotation.x += dt * 0.25;
+
+      // Subtle mouse-driven precession
+      if (hasPointer) {
+        const targetX = mouse.y * 0.25;
+        const targetY = mouse.x * 0.35;
+        ico.rotation.x = THREE.MathUtils.lerp(ico.rotation.x, targetX + ico.rotation.x, 0.02);
+        ico.rotation.y = THREE.MathUtils.lerp(ico.rotation.y, targetY + ico.rotation.y, 0.02);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    });
+
+    // Keyboard: toggle autorotate
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        controls.autoRotate = !controls.autoRotate;
+        e.preventDefault();
+      }
+    });
+  </script>
+</body>
+</html>

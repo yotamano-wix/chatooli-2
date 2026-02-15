@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Three.js + Subtle Unreal Bloom</title>
+  <style>
+    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#05060a; }
+    canvas { display:block; width:100%; height:100%; }
+    #hud{
+      position:fixed; left:12px; bottom:12px; z-index:10;
+      font:12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      color:rgba(255,255,255,0.75);
+      background:rgba(0,0,0,0.35);
+      border:1px solid rgba(255,255,255,0.10);
+      padding:10px 12px; border-radius:10px;
+      backdrop-filter: blur(6px);
+      user-select:none;
+    }
+    #hud b{ color:rgba(255,255,255,0.92); font-weight:600; }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="hud">
+    <b>Unreal Bloom</b> (subtle)<br/>
+    Drag: orbit · Wheel: zoom · Move mouse: light bias<br/>
+    Keys: <b>B</b> toggle bloom · <b>[</b>/<b>]</b> strength
+  </div>
+
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+  import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+  // --- Renderer ---
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  document.body.appendChild(renderer.domElement);
+
+  // --- Scene / Camera ---
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05060a);
+
+  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+  camera.position.set(0.0, 1.2, 6.5);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+
+  // --- Lights ---
+  const ambient = new THREE.AmbientLight(0xffffff, 0.22);
+  scene.add(ambient);
+
+  const keyLight = new THREE.DirectionalLight(0xaecbff, 1.25);
+  keyLight.position.set(3, 5, 2);
+  scene.add(keyLight);
+
+  const rimLight = new THREE.PointLight(0xff4fd8, 1.2, 30);
+  rimLight.position.set(-3, 1.5, -2.5);
+  scene.add(rimLight);
+
+  // Mouse-biased fill light (adds a bit of interactive shimmer to bloom)
+  const mouseLight = new THREE.PointLight(0x66ffdd, 0.8, 18);
+  mouseLight.position.set(0, 0.5, 3.5);
+  scene.add(mouseLight);
+
+  // --- Geometry ---
+  const group = new THREE.Group();
+  scene.add(group);
+
+  const knotGeo = new THREE.TorusKnotGeometry(1.15, 0.38, 260, 24);
+  const knotMat = new THREE.MeshStandardMaterial({
+    color: 0x9a6cff,
+    emissive: 0x24002a,     // small emissive helps bloom read without being overpowering
+    emissiveIntensity: 1.1,
+    roughness: 0.22,
+    metalness: 0.55
+  });
+  const knot = new THREE.Mesh(knotGeo, knotMat);
+  knot.castShadow = false;
+  knot.receiveShadow = false;
+  group.add(knot);
+
+  const icoGeo = new THREE.IcosahedronGeometry(1.05, 3);
+  const icoMat = new THREE.MeshStandardMaterial({
+    color: 0x2ff3ff,
+    emissive: 0x001b22,
+    emissiveIntensity: 1.4,
+    roughness: 0.28,
+    metalness: 0.2
+  });
+  const ico = new THREE.Mesh(icoGeo, icoMat);
+  ico.position.set(0, -0.35, 0);
+  ico.scale.setScalar(0.65);
+  group.add(ico);
+
+  // A few small "glow seeds" around the subject
+  const seedGeo = new THREE.SphereGeometry(0.06, 16, 16);
+  const seedMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xffffff,
+    emissiveIntensity: 1.6,
+    roughness: 0.8,
+    metalness: 0.0
+  });
+  const seeds = [];
+  for (let i = 0; i < 36; i++) {
+    const m = new THREE.Mesh(seedGeo, seedMat);
+    const a = i / 36 * Math.PI * 2;
+    const r = 2.2 + 0.35 * Math.sin(i * 2.4);
+    m.position.set(Math.cos(a) * r, (Math.sin(i * 1.7) * 0.7), Math.sin(a) * r);
+    m.userData.phase = a;
+    group.add(m);
+    seeds.push(m);
+  }
+
+  // --- Postprocessing: Unreal Bloom ---
+  const composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(innerWidth, innerHeight),
+    0.55,  // strength (subtle but visible)
+    0.85,  // radius (soft spread)
+    0.78   // threshold (higher => less blooming; keep fairly high for subtlety)
+  );
+  composer.addPass(bloomPass);
+
+  let bloomEnabled = true;
+
+  // --- Interaction ---
+  const mouse = new THREE.Vector2(0.5, 0.5);
+  window.addEventListener('pointermove', (e) => {
+    mouse.x = e.clientX / innerWidth;
+    mouse.y = 1.0 - (e.clientY / innerHeight);
+  }, { passive: true });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'b' || e.key === 'B') {
+      bloomEnabled = !bloomEnabled;
+    } else if (e.key === '[') {
+      bloomPass.strength = Math.max(0.0, bloomPass.strength - 0.05);
+    } else if (e.key === ']') {
+      bloomPass.strength = Math.min(2.5, bloomPass.strength + 0.05);
+    }
+  });
+
+  // --- Animation ---
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    controls.update();
+
+    // Gentle motion
+    group.rotation.y = t * 0.35;
+    group.rotation.x = 0.15 * Math.sin(t * 0.7);
+    knot.rotation.x = t * 0.25;
+    knot.rotation.z = t * 0.18;
+    ico.rotation.y = -t * 0.28;
+
+    // Orbiting seeds (helps show bloom without cranking it)
+    for (let i = 0; i < seeds.length; i++) {
+      const m = seeds[i];
+      const ph = m.userData.phase + t * 0.55;
+      const r = 2.15 + 0.25 * Math.sin(t * 1.2 + i);
+      m.position.x = Math.cos(ph) * r;
+      m.position.z = Math.sin(ph) * r;
+      m.position.y = 0.55 * Math.sin(ph * 1.7 + t * 0.9);
+    }
+
+    // Mouse light drift
+    const mx = (mouse.x - 0.5) * 6.0;
+    const my = (mouse.y - 0.5) * 3.0;
+    mouseLight.position.set(mx, my + 0.8, 3.0);
+    mouseLight.intensity = 0.65 + 0.35 * Math.sin(t * 1.5);
+
+    if (bloomEnabled) composer.render();
+    else renderer.render(scene, camera);
+  }
+  animate();
+
+  function onResize() {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+    bloomPass.setSize(innerWidth, innerHeight);
+  }
+  window.addEventListener('resize', onResize);
+</script>
+</body>
+</html>

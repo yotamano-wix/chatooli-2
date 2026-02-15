@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Three.js Subtle Bloom</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    canvas { display: block; }
+    .hud {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: rgba(255,255,255,0.75);
+      font-size: 12px;
+      line-height: 1.35;
+      user-select: none;
+      pointer-events: none;
+      text-shadow: 0 1px 10px rgba(0,0,0,0.75);
+    }
+    .hud b { color: rgba(255,255,255,0.9); font-weight: 600; }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <b>Orbit</b>: drag · <b>Zoom</b>: wheel · <b>Bloom</b>: ↑/↓ · <b>Toggle</b>: B
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+    // --- Renderer ---
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.body.appendChild(renderer.domElement);
+
+    // --- Scene / Camera ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x07080c);
+
+    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+    camera.position.set(0, 1.6, 6.5);
+
+    // --- Controls ---
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0, 0.7, 0);
+
+    // --- Lights ---
+    scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+
+    const key = new THREE.DirectionalLight(0xaac8ff, 1.0);
+    key.position.set(4, 6, 3);
+    scene.add(key);
+
+    const fill = new THREE.PointLight(0xff3bd1, 18, 18);
+    fill.position.set(-2.8, 1.0, 1.5);
+    scene.add(fill);
+
+    const rim = new THREE.PointLight(0x3bf5ff, 12, 25);
+    rim.position.set(3.5, 2.2, -3.0);
+    scene.add(rim);
+
+    // --- Objects (a small "neon sculpture" for bloom to catch) ---
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const knot = new THREE.Mesh(
+      new THREE.TorusKnotGeometry(1.05, 0.34, 220, 16),
+      new THREE.MeshStandardMaterial({
+        color: 0x0b0f14,
+        metalness: 0.65,
+        roughness: 0.23,
+        emissive: new THREE.Color(0x081018),
+        emissiveIntensity: 0.55
+      })
+    );
+    knot.position.y = 0.9;
+    group.add(knot);
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.85, 0.035, 16, 300),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        metalness: 0.1,
+        roughness: 0.25,
+        emissive: new THREE.Color(0x6fe7ff),
+        emissiveIntensity: 1.6
+      })
+    );
+    ring.rotation.x = Math.PI * 0.5;
+    ring.position.y = 0.9;
+    group.add(ring);
+
+    const ring2 = ring.clone();
+    ring2.material = ring.material.clone();
+    ring2.material.emissive = new THREE.Color(0xff6fdc);
+    ring2.material.emissiveIntensity = 1.45;
+    ring2.rotation.x = Math.PI * 0.5;
+    ring2.rotation.z = Math.PI / 3;
+    group.add(ring2);
+
+    // Ground
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(7.5, 128),
+      new THREE.MeshStandardMaterial({
+        color: 0x06070a,
+        metalness: 0.0,
+        roughness: 0.95
+      })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    scene.add(ground);
+
+    // A few tiny emissive "stars" to help bloom read subtly
+    const stars = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.025, 10, 10),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xffffff,
+        emissiveIntensity: 2.2,
+        roughness: 0.5,
+        metalness: 0.0
+      }),
+      140
+    );
+    const m = new THREE.Matrix4();
+    const rng = (a,b)=> a + Math.random()*(b-a);
+    for (let i = 0; i < stars.count; i++) {
+      const r = rng(2.5, 10.0);
+      const th = rng(0, Math.PI * 2);
+      const y = rng(0.5, 4.8);
+      m.makeTranslation(Math.cos(th) * r, y, Math.sin(th) * r);
+      stars.setMatrixAt(i, m);
+    }
+    stars.instanceMatrix.needsUpdate = true;
+    scene.add(stars);
+
+    // --- Post-processing: UnrealBloomPass over whole scene ---
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight),
+      0.55, // strength (subtle but visible)
+      0.45, // radius
+      0.88  // threshold (higher = only bright areas bloom)
+    );
+    composer.addPass(bloomPass);
+
+    // Ensure correct output colors with postprocessing chain
+    composer.addPass(new OutputPass());
+
+    let bloomEnabled = true;
+
+    // --- Interaction: tweak bloom ---
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'b' || e.key === 'B') {
+        bloomEnabled = !bloomEnabled;
+      } else if (e.key === 'ArrowUp') {
+        bloomPass.strength = Math.min(2.5, bloomPass.strength + 0.05);
+      } else if (e.key === 'ArrowDown') {
+        bloomPass.strength = Math.max(0.0, bloomPass.strength - 0.05);
+      }
+    });
+
+    // --- Animate ---
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      controls.update();
+
+      // Gentle motion to keep bloom alive
+      group.rotation.y = t * 0.22;
+      group.rotation.x = Math.sin(t * 0.45) * 0.08;
+      ring.material.emissiveIntensity = 1.55 + Math.sin(t * 1.6) * 0.18;
+      ring2.material.emissiveIntensity = 1.45 + Math.cos(t * 1.35) * 0.16;
+
+      // Small light drift
+      fill.position.x = -2.8 + Math.sin(t * 0.7) * 0.45;
+      rim.position.z = -3.0 + Math.cos(t * 0.6) * 0.55;
+
+      if (bloomEnabled) composer.render();
+      else renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- Resize ---
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+      bloomPass.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>
