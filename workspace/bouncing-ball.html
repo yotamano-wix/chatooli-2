@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>p5.js Bouncing Ball + Controllers</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .hud {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      color: rgba(255,255,255,0.8);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      user-select: none;
+      pointer-events: none;
+      mix-blend-mode: screen;
+      text-shadow: 0 0 18px rgba(80,160,255,0.35);
+      white-space: pre;
+    }
+
+    .panel {
+      position: fixed;
+      right: 12px;
+      top: 12px;
+      width: min(320px, calc(100vw - 24px));
+      background: rgba(18,18,20,0.72);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 10px 10px 8px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      color: rgba(255,255,255,0.86);
+    }
+
+    .panel .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 2px;
+    }
+
+    .panel label {
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      opacity: 0.9;
+    }
+
+    .panel input[type="range"] {
+      width: 100%;
+    }
+
+    .panel .val {
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      opacity: 0.85;
+      min-width: 62px;
+      text-align: right;
+    }
+
+    .panel .buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .panel button {
+      flex: 1;
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.86);
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .panel button:hover { background: rgba(255,255,255,0.10); }
+    .panel button:active { transform: translateY(1px); }
+
+    .panel .hint {
+      margin-top: 8px;
+      font-size: 11px;
+      opacity: 0.65;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud" id="hud">Click = impulse • Drag = aim • Space = reset</div>
+
+  <div class="panel" id="panel">
+    <div class="row">
+      <label for="g">Gravity</label>
+      <div class="val" id="gVal"></div>
+    </div>
+    <input id="g" type="range" min="0" max="1.2" step="0.01" value="0.25" />
+
+    <div class="row">
+      <label for="b">Bounciness</label>
+      <div class="val" id="bVal"></div>
+    </div>
+    <input id="b" type="range" min="0.5" max="0.99" step="0.01" value="0.92" />
+
+    <div class="row">
+      <label for="air">Air drag</label>
+      <div class="val" id="airVal"></div>
+    </div>
+    <input id="air" type="range" min="0.95" max="1" step="0.001" value="0.999" />
+
+    <div class="row">
+      <label for="r">Ball size</label>
+      <div class="val" id="rVal"></div>
+    </div>
+    <input id="r" type="range" min="8" max="90" step="1" value="26" />
+
+    <div class="row">
+      <label for="trail">Trail</label>
+      <div class="val" id="trailVal"></div>
+    </div>
+    <input id="trail" type="range" min="0" max="80" step="1" value="30" />
+
+    <div class="buttons">
+      <button id="resetBtn" type="button">Reset</button>
+      <button id="randomBtn" type="button">Random kick</button>
+    </div>
+
+    <div class="hint">Tip: drag from the ball and release to slingshot. Toggle panel focus-free (won't steal mouse).</div>
+  </div>
+
+  <script>
+    let ball;
+    const bg = '#0a0a0a';
+
+    // DOM controllers
+    const UI = {
+      g: null, b: null, air: null, r: null, trail: null,
+      gVal: null, bVal: null, airVal: null, rVal: null, trailVal: null,
+      resetBtn: null, randomBtn: null
+    };
+
+    let dragStart = null; // {x,y}
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      pixelDensity(Math.min(2, window.devicePixelRatio || 1));
+
+      bindUI();
+      resetBall(false);
+      background(bg);
+    }
+
+    function bindUI() {
+      UI.g = document.getElementById('g');
+      UI.b = document.getElementById('b');
+      UI.air = document.getElementById('air');
+      UI.r = document.getElementById('r');
+      UI.trail = document.getElementById('trail');
+      UI.gVal = document.getElementById('gVal');
+      UI.bVal = document.getElementById('bVal');
+      UI.airVal = document.getElementById('airVal');
+      UI.rVal = document.getElementById('rVal');
+      UI.trailVal = document.getElementById('trailVal');
+      UI.resetBtn = document.getElementById('resetBtn');
+      UI.randomBtn = document.getElementById('randomBtn');
+
+      const updateLabels = () => {
+        UI.gVal.textContent = Number(UI.g.value).toFixed(2);
+        UI.bVal.textContent = Number(UI.b.value).toFixed(2);
+        UI.airVal.textContent = Number(UI.air.value).toFixed(3);
+        UI.rVal.textContent = `${Math.round(Number(UI.r.value))} px`;
+        UI.trailVal.textContent = `${Math.round(Number(UI.trail.value))}`;
+      };
+
+      ['input','change'].forEach(evt => {
+        UI.g.addEventListener(evt, updateLabels);
+        UI.b.addEventListener(evt, updateLabels);
+        UI.air.addEventListener(evt, updateLabels);
+        UI.r.addEventListener(evt, updateLabels);
+        UI.trail.addEventListener(evt, updateLabels);
+      });
+
+      UI.resetBtn.addEventListener('click', () => resetBall(true));
+      UI.randomBtn.addEventListener('click', () => {
+        if (!ball) return;
+        ball.vel.add(createVector(random(-10, 10), random(-12, -2)));
+      });
+
+      updateLabels();
+
+      // prevent accidental page scrolling on touch
+      document.body.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    }
+
+    function resetBall(clear = true) {
+      const rr = Number(UI.r?.value ?? 26);
+      ball = {
+        r: rr,
+        pos: createVector(width * 0.5, height * 0.35),
+        vel: createVector(random(-4, 4), random(2, 6)),
+        grav: createVector(0, Number(UI.g?.value ?? 0.25)),
+        bounce: Number(UI.b?.value ?? 0.92),
+        air: Number(UI.air?.value ?? 0.999)
+      };
+      dragStart = null;
+      if (clear) background(bg);
+    }
+
+    function applyUIToBall() {
+      if (!ball) return;
+      ball.grav.y = Number(UI.g.value);
+      ball.bounce = Number(UI.b.value);
+      ball.air = Number(UI.air.value);
+      ball.r = Number(UI.r.value);
+    }
+
+    function draw() {
+      applyUIToBall();
+
+      // motion blur / trails
+      const trailAlpha = Number(UI.trail.value); // 0..80
+      noStroke();
+      fill(10, 10, 10, trailAlpha);
+      rect(0, 0, width, height);
+
+      updateBall();
+      drawBall();
+
+      // subtle floor line
+      stroke(255, 255, 255, 18);
+      line(0, height - 1, width, height - 1);
+
+      // aim line when dragging
+      if (dragStart) {
+        stroke(255, 255, 255, 80);
+        strokeWeight(1);
+        line(dragStart.x, dragStart.y, mouseX, mouseY);
+      }
+    }
+
+    function updateBall() {
+      ball.vel.add(ball.grav);
+      ball.vel.mult(ball.air);
+      ball.pos.add(ball.vel);
+
+      if (ball.pos.x < ball.r) {
+        ball.pos.x = ball.r;
+        ball.vel.x *= -ball.bounce;
+      } else if (ball.pos.x > width - ball.r) {
+        ball.pos.x = width - ball.r;
+        ball.vel.x *= -ball.bounce;
+      }
+
+      if (ball.pos.y < ball.r) {
+        ball.pos.y = ball.r;
+        ball.vel.y *= -ball.bounce;
+      } else if (ball.pos.y > height - ball.r) {
+        ball.pos.y = height - ball.r;
+        ball.vel.y *= -ball.bounce;
+        ball.vel.x *= 0.995;
+        if (abs(ball.vel.y) < 0.25) ball.vel.y = 0;
+      }
+
+      if (!isFinite(ball.pos.x + ball.pos.y + ball.vel.x + ball.vel.y)) resetBall(true);
+    }
+
+    function drawBall() {
+      const speed = ball.vel.mag();
+      const glow = map(constrain(speed, 0, 20), 0, 20, 6, 26);
+
+      drawingContext.save();
+      drawingContext.shadowBlur = glow;
+      drawingContext.shadowColor = 'rgba(80, 160, 255, 0.55)';
+
+      noStroke();
+      const c1 = color(70, 160, 255, 235);
+      const c2 = color(255, 255, 255, 200);
+      fill(c1);
+      circle(ball.pos.x, ball.pos.y, ball.r * 2);
+      fill(c2);
+      circle(ball.pos.x - ball.r * 0.35, ball.pos.y - ball.r * 0.35, ball.r * 0.9);
+
+      drawingContext.restore();
+    }
+
+    function isPointerOverPanel() {
+      const panel = document.getElementById('panel');
+      if (!panel) return false;
+      const r = panel.getBoundingClientRect();
+      return mouseX >= r.left && mouseX <= r.right && mouseY >= r.top && mouseY <= r.bottom;
+    }
+
+    function mousePressed() {
+      if (isPointerOverPanel()) return;
+
+      // if clicking near the ball, start slingshot drag
+      const d = dist(mouseX, mouseY, ball.pos.x, ball.pos.y);
+      if (d < ball.r * 1.25) {
+        dragStart = { x: ball.pos.x, y: ball.pos.y };
+        return;
+      }
+
+      // otherwise impulse toward cursor
+      const dir = createVector(mouseX - ball.pos.x, mouseY - ball.pos.y);
+      const m = constrain(dir.mag(), 0, 400);
+      if (m > 0.001) {
+        dir.normalize();
+        const impulse = dir.mult(m * 0.03);
+        ball.vel.add(impulse);
+      }
+    }
+
+    function mouseReleased() {
+      if (!dragStart) return;
+      // slingshot: release gives velocity opposite the pull direction
+      const pull = createVector(mouseX - dragStart.x, mouseY - dragStart.y);
+      const m = constrain(pull.mag(), 0, 300);
+      if (m > 1) {
+        pull.normalize();
+        const kick = pull.mult(-m * 0.08);
+        ball.vel.add(kick);
+      }
+      dragStart = null;
+    }
+
+    function keyPressed() {
+      if (key === ' ') resetBall(true);
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      resetBall(true);
+    }
+  </script>
+</body>
+</html>

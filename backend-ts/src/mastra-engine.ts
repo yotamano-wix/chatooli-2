@@ -12,7 +12,7 @@ import * as fs from "./tools/filesystem.js";
 import { executePythonCode } from "./tools/sandbox.js";
 import { extractCodeBlocks } from "./utils.js";
 
-const DEFAULT_MODEL = "openai/gpt-5.2";
+const DEFAULT_MODEL = "google/gemini-3-pro-preview";
 const MAX_STEPS = 20;
 
 // ---------- Types ----------
