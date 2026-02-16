@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wireframe Icosahedron — Three.js</title>
+  <style>
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    #hud {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: rgba(255,255,255,0.75);
+      font-size: 12px;
+      line-height: 1.35;
+      user-select: none;
+      letter-spacing: 0.2px;
+      max-width: min(520px, calc(100vw - 24px));
+    }
+    #hud .help { pointer-events: none; }
+    #panel {
+      margin-top: 10px;
+      padding: 10px 10px 8px;
+      background: rgba(10,10,10,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      backdrop-filter: blur(6px);
+      pointer-events: auto;
+    }
+    #panel label {
+      display: grid;
+      grid-template-columns: 140px 1fr 44px;
+      gap: 10px;
+      align-items: center;
+      margin: 8px 0;
+    }
+    #panel input[type="range"] { width: 100%; }
+    #panel .val {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.85;
+    }
+    #panel .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    #panel button {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.9);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    #panel button:hover { background: rgba(255,255,255,0.12); }
+    #panel .chip {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      opacity: 0.9;
+      font-size: 11px;
+    }
+    a { color: rgba(140, 200, 255, 0.9); }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="help">
+      Drag: orbit · Scroll: zoom · Right-drag: pan<br/>
+      <span style="opacity:.75">Tip: press <b>Space</b> to toggle rotation</span>
+    </div>
+
+    <div id="panel">
+      <label>
+        <span>Rotation speed</span>
+        <input id="speed" type="range" min="0" max="2" step="0.001" value="0.55" />
+        <span class="val" id="speedVal">0.55</span>
+      </label>
+      <label>
+        <span>Wire opacity</span>
+        <input id="wireOp" type="range" min="0" max="1" step="0.001" value="0.9" />
+        <span class="val" id="wireOpVal">0.90</span>
+      </label>
+      <label>
+        <span>Outline opacity</span>
+        <input id="edgeOp" type="range" min="0" max="1" step="0.001" value="0.35" />
+        <span class="val" id="edgeOpVal">0.35</span>
+      </label>
+      <label>
+        <span>Fill opacity</span>
+        <input id="fillOp" type="range" min="0" max="0.6" step="0.001" value="0.12" />
+        <span class="val" id="fillOpVal">0.12</span>
+      </label>
+
+      <div class="row">
+        <button id="toggle">Toggle rotate</button>
+        <button id="reset">Reset view</button>
+        <span class="chip" id="state">rotating</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://esm.sh/three@0.170.0';
+    import { OrbitControls } from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
+
+    const $ = (sel) => document.querySelector(sel);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+
+    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
+    const defaultCamPos = new THREE.Vector3(0, 0.6, 4.2);
+    camera.position.copy(defaultCamPos);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+
+    // Lights (subtle, just to give faint depth even in wireframe via fog + fill)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+    dir.position.set(2, 3, 4);
+    scene.add(dir);
+
+    // A little fog to help depth perception
+    scene.fog = new THREE.Fog(0x0a0a0a, 6, 14);
+
+    // Icosahedron
+    const geo = new THREE.IcosahedronGeometry(1.35, 0);
+
+    // Wireframe mesh
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xaad7ff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.9
+    });
+    const ico = new THREE.Mesh(geo, mat);
+    scene.add(ico);
+
+    // Extra crisp edges (overlay) so the lines read nicely across browsers
+    const edges = new THREE.EdgesGeometry(geo, 18);
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35
+    });
+    const outline = new THREE.LineSegments(edges, lineMat);
+    ico.add(outline);
+
+    // A faint inner fill to hint faces without losing the wireframe look
+    const fillMat = new THREE.MeshStandardMaterial({
+      color: 0x1a2a3a,
+      roughness: 0.9,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.12
+    });
+    const fill = new THREE.Mesh(geo, fillMat);
+    ico.add(fill);
+
+    // --- Controllers (HUD) ---
+    const ui = {
+      speed: $('#speed'), speedVal: $('#speedVal'),
+      wireOp: $('#wireOp'), wireOpVal: $('#wireOpVal'),
+      edgeOp: $('#edgeOp'), edgeOpVal: $('#edgeOpVal'),
+      fillOp: $('#fillOp'), fillOpVal: $('#fillOpVal'),
+      toggle: $('#toggle'),
+      reset: $('#reset'),
+      state: $('#state')
+    };
+
+    const params = {
+      speed: parseFloat(ui.speed.value),
+      wireOpacity: parseFloat(ui.wireOp.value),
+      edgeOpacity: parseFloat(ui.edgeOp.value),
+      fillOpacity: parseFloat(ui.fillOp.value)
+    };
+
+    function fmt(x) {
+      const s = (Math.round(x * 1000) / 1000).toFixed(3);
+      // trim trailing zeros a bit
+      return s.replace(/0+$/,'').replace(/\.$/,'');
+    }
+
+    function syncUI() {
+      ui.speedVal.textContent = fmt(params.speed);
+      ui.wireOpVal.textContent = fmt(params.wireOpacity);
+      ui.edgeOpVal.textContent = fmt(params.edgeOpacity);
+      ui.fillOpVal.textContent = fmt(params.fillOpacity);
+
+      mat.opacity = params.wireOpacity;
+      lineMat.opacity = params.edgeOpacity;
+      fillMat.opacity = params.fillOpacity;
+
+      ui.state.textContent = rotating ? 'rotating' : 'paused';
+      ui.state.style.opacity = rotating ? '0.95' : '0.65';
+    }
+
+    ui.speed.addEventListener('input', () => { params.speed = parseFloat(ui.speed.value); syncUI(); });
+    ui.wireOp.addEventListener('input', () => { params.wireOpacity = parseFloat(ui.wireOp.value); syncUI(); });
+    ui.edgeOp.addEventListener('input', () => { params.edgeOpacity = parseFloat(ui.edgeOp.value); syncUI(); });
+    ui.fillOp.addEventListener('input', () => { params.fillOpacity = parseFloat(ui.fillOp.value); syncUI(); });
+
+    // Animation
+    const clock = new THREE.Clock();
+    let rotating = true;
+
+    ui.toggle.addEventListener('click', () => { rotating = !rotating; syncUI(); });
+
+    ui.reset.addEventListener('click', () => {
+      rotating = true;
+      params.speed = 0.55;
+      params.wireOpacity = 0.9;
+      params.edgeOpacity = 0.35;
+      params.fillOpacity = 0.12;
+
+      ui.speed.value = params.speed;
+      ui.wireOp.value = params.wireOpacity;
+      ui.edgeOp.value = params.edgeOpacity;
+      ui.fillOp.value = params.fillOpacity;
+
+      ico.rotation.set(0, 0, 0);
+      camera.position.copy(defaultCamPos);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      syncUI();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { rotating = !rotating; syncUI(); }
+      if (e.key === 'r' || e.key === 'R') ui.reset.click();
+    });
+
+    syncUI();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      if (rotating) {
+        ico.rotation.y = t * params.speed;
+        ico.rotation.x = t * (params.speed * 0.49);
+        ico.rotation.z = t * (params.speed * 0.33);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    });
+  </script>
+</body>
+</html>

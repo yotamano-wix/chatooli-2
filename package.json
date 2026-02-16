@@ -1,0 +1,9 @@
+{
+  "name": "chatooli-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix backend-ts",
+    "build": "npm run build --prefix backend-ts",
+    "start": "npm run start --prefix backend-ts"
+  }
+}

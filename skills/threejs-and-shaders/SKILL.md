@@ -6,9 +6,12 @@ description: >
   Three.js scenes, 3D geometry, lighting, materials, post-processing, ray marching,
   or any GPU-based visual. Do NOT use for 2D Canvas/p5.js (use creative-coding) or
   SVG (use svg-and-animation).
+compatibility: >
+  Requires browser with WebGL support. CDN access to esm.sh required for Three.js.
+  Output rendered in sandboxed iframe with allow-scripts allow-same-origin.
 metadata:
   author: chatooli
-  version: 1.0.0
+  version: 2.1.0
   category: creative-coding
 ---
 
@@ -19,33 +22,45 @@ Generate 3D scenes and GPU-powered visuals as self-contained HTML files.
 ## Output Rules
 
 - ALWAYS output a **single self-contained HTML file**.
-- Load Three.js from CDN using import maps or script tags.
+- Load Three.js from **esm.sh** CDN using direct full URLs in ES module imports. Do NOT use import maps — they break in sandboxed iframes. Do NOT use unpkg or jsdelivr for ES module imports (addons use bare specifiers that only work with import maps). esm.sh auto-resolves bare specifiers.
 - Use a **dark background** (e.g. `0x0a0a0a`).
 - Make scenes **interactive** (OrbitControls, mouse uniforms) when possible.
 - The HTML must work inside an iframe with `sandbox="allow-scripts allow-same-origin"`.
 
+## Examples
+
+### Example 1: 3D geometry
+User says: "Build a rotating 3D wireframe icosahedron with Three.js"
+Actions:
+1. Create HTML with `<script type="module">` importing Three.js from esm.sh
+2. Set up scene, camera (z=5), renderer with antialias
+3. Create `IcosahedronGeometry` with `MeshBasicMaterial({ wireframe: true })`
+4. Add rotation in animation loop, include OrbitControls
+Result: Interactive wireframe icosahedron rotating smoothly, draggable with mouse
+
+### Example 2: Custom shader
+User says: "Make a fullscreen GLSL shader with animated plasma waves"
+Actions:
+1. Create HTML with `<canvas>` and raw WebGL context
+2. Write vertex shader (fullscreen quad) and fragment shader with `u_time`, `u_resolution`
+3. Implement plasma formula using layered `sin()` waves
+4. Set up render loop passing uniforms each frame
+Result: Fullscreen animated plasma waves responding to time
+
 ## Three.js Patterns
 
-### Basic scene with import map (recommended)
+### Basic scene with esm.sh CDN (recommended)
 ```html
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <style>body { margin: 0; overflow: hidden; background: #000; }</style>
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
-    }
-  }
-  </script>
 </head>
 <body>
 <script type="module">
-  import * as THREE from 'three';
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import * as THREE from 'https://esm.sh/three@0.170.0';
+  import { OrbitControls } from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0a0a);
@@ -98,9 +113,9 @@ Generate 3D scenes and GPU-powered visuals as self-contained HTML files.
 
 ### Post-processing
 ```javascript
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { EffectComposer } from 'https://esm.sh/three@0.170.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://esm.sh/three@0.170.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://esm.sh/three@0.170.0/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -163,6 +178,28 @@ void main() {
 - `u_resolution` — canvas size
 - `u_mouse` — normalized mouse position (0-1)
 
+## Troubleshooting
+
+### Black screen (nothing renders)
+Cause: ES module imports failed silently. Common when using import maps (broken in sandboxed iframes) or incorrect CDN URLs.
+Solution: Use `https://esm.sh/three@0.170.0` for all imports. Do NOT use import maps. Do NOT use unpkg or jsdelivr for module imports (addons import `'three'` as bare specifier which requires import maps).
+
+### "Cannot use import statement outside a module"
+Cause: Missing `type="module"` on the script tag.
+Solution: Use `<script type="module">` for any script that uses `import` statements.
+
+### WebGL context lost
+Cause: Too many active WebGL contexts or GPU memory exhaustion.
+Solution: Limit geometry detail. Call `renderer.dispose()` on cleanup. Reuse geometries and materials where possible.
+
+### OrbitControls not responding
+Cause: Controls created before renderer's `domElement` is in the DOM.
+Solution: Ensure `document.body.appendChild(renderer.domElement)` runs before creating `OrbitControls(camera, renderer.domElement)`.
+
+### Shader compilation error
+Cause: GLSL syntax error in vertex or fragment shader strings.
+Solution: Check browser console for shader compilation errors. Common issues: missing precision declaration (`precision highp float;`), mismatched varying/attribute names, missing semicolons.
+
 ## Quality checklist
 - [ ] Single self-contained HTML file
 - [ ] Dark background
@@ -170,3 +207,4 @@ void main() {
 - [ ] Interactive (OrbitControls or mouse uniforms)
 - [ ] Smooth animation (requestAnimationFrame)
 - [ ] CDN imports use specific version numbers (not "latest")
+- [ ] Use direct full CDN URLs from esm.sh (NO import maps — they break in sandboxed iframes)

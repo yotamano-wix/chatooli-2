@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>p5 Motion Tool</title>
+  <style>
+    :root{ --bg:#0a0a0a; --panel:#111218; --panel2:#0e0f14; --ink:#e9eefc; --muted:#9aa4c0; --acc:#66e3ff; --acc2:#b06bff; }
+    html,body{ height:100%; }
+    body{ margin:0; background:var(--bg); color:var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; overflow:hidden; }
+    #wrap{ position:fixed; inset:0; display:grid; grid-template-columns: 1fr 320px; }
+    #canvasHost{ position:relative; }
+    canvas{ display:block; }
+    #ui{ background:linear-gradient(180deg, rgba(17,18,24,.92), rgba(14,15,20,.88)); border-left:1px solid rgba(255,255,255,.08); padding:14px 14px 18px; overflow:auto; }
+    #ui h1{ font-size:14px; letter-spacing:.12em; text-transform:uppercase; margin:0 0 10px; color:rgba(233,238,252,.9); }
+    .row{ display:flex; gap:10px; align-items:center; margin:10px 0; }
+    .row > label{ flex: 1 1 auto; font-size:12px; color:rgba(233,238,252,.82); }
+    .row > input[type="range"]{ flex: 1 1 auto; width: 160px; }
+    .row > input[type="number"], .row > select{ width:110px; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.12); color:var(--ink); border-radius:10px; padding:7px 8px; font-size:12px; outline:none; }
+    .btns{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    button{
+      appearance:none; border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.22);
+      color:var(--ink);
+      padding:8px 10px;
+      border-radius:12px;
+      font-size:12px;
+      cursor:pointer;
+    }
+    button:hover{ border-color:rgba(102,227,255,.55); }
+    button.primary{ background:linear-gradient(135deg, rgba(102,227,255,.18), rgba(176,107,255,.14)); border-color:rgba(102,227,255,.35); }
+    .hint{ font-size:12px; color:rgba(233,238,252,.62); line-height:1.35; margin-top:10px; }
+    .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:11px; padding:1px 6px; border-radius:8px; border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.18); color:rgba(233,238,252,.9); }
+    .sep{ height:1px; background:rgba(255,255,255,.08); margin:12px 0; }
+    .pill{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.16); font-size:12px; color:rgba(233,238,252,.72); }
+    .dot{ width:8px; height:8px; border-radius:50%; background:var(--acc); box-shadow:0 0 18px rgba(102,227,255,.45); }
+    @media (max-width: 900px){
+      #wrap{ grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      #ui{ border-left:none; border-top:1px solid rgba(255,255,255,.08); max-height: 42vh; }
+    }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="canvasHost"></div>
+    <aside id="ui">
+      <h1>p5 Motion Tool</h1>
+      <div class="pill"><span class="dot"></span><span id="status">Draw mode</span></div>
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="draw">Draw path</option>
+          <option value="play">Playback</option>
+          <option value="emit">Emit particles</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="smoothing">Smoothing</label>
+        <input id="smoothing" type="range" min="0" max="0.95" step="0.01" value="0.75" />
+        <input id="smoothingN" type="number" min="0" max="0.95" step="0.01" value="0.75" />
+      </div>
+
+      <div class="row">
+        <label for="speed">Playback speed</label>
+        <input id="speed" type="range" min="0.2" max="4" step="0.01" value="1.0" />
+        <input id="speedN" type="number" min="0.2" max="4" step="0.01" value="1.0" />
+      </div>
+
+      <div class="row">
+        <label for="trail">Trail fade</label>
+        <input id="trail" type="range" min="0" max="0.35" step="0.005" value="0.08" />
+        <input id="trailN" type="number" min="0" max="0.35" step="0.005" value="0.08" />
+      </div>
+
+      <div class="row">
+        <label for="thickness">Stroke width</label>
+        <input id="thickness" type="range" min="1" max="14" step="0.1" value="3.5" />
+        <input id="thicknessN" type="number" min="1" max="14" step="0.1" value="3.5" />
+      </div>
+
+      <div class="row">
+        <label for="particles">Particles</label>
+        <input id="particles" type="range" min="0" max="80" step="1" value="24" />
+        <input id="particlesN" type="number" min="0" max="80" step="1" value="24" />
+      </div>
+
+      <div class="btns">
+        <button id="clear" title="Clear path (C)">Clear</button>
+        <button id="undo" title="Undo last point (Z)">Undo</button>
+        <button class="primary" id="toggle" title="Toggle Draw/Playback (Space)">Toggle</button>
+        <button id="export" title="Copy path JSON">Copy JSON</button>
+        <button id="import" title="Paste path JSON">Paste JSON</button>
+        <button id="save" title="Save PNG (S)">Save PNG</button>
+      </div>
+
+      <div class="hint">
+        <div><span class="kbd">Drag</span> to draw. <span class="kbd">Space</span> toggle draw/play. <span class="kbd">E</span> emit mode.</div>
+        <div><span class="kbd">C</span> clear, <span class="kbd">Z</span> undo, <span class="kbd">S</span> save PNG.</div>
+        <div>Tip: set Trail fade low for long exposure; increase speed for kinetic motion.</div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+  <script>
+    // p5 Motion Tool
+    // - Draw a path
+    // - Smooth it (EMA)
+    // - Playback a head along the path
+    // - Optionally emit particles from the moving head
+
+    const state = {
+      mode: 'draw',
+      raw: [],          // raw points
+      path: [],         // smoothed + resampled points
+      headT: 0,         // playback normalized position [0,1)
+      headPos: {x:0,y:0},
+      headVel: {x:0,y:0},
+      isDrawing: false,
+      particles: [],
+      lastEmit: 0,
+      // params
+      smoothing: 0.75,
+      speed: 1.0,
+      trail: 0.08,
+      thickness: 3.5,
+      emitRate: 24,
+      // internal
+      needsRebuild: true,
+      totalLen: 0,
+    };
+
+    function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+    function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+
+    function rebuildPath(){
+      state.needsRebuild = false;
+      const pts = state.raw;
+      if (pts.length < 2){ state.path = pts.slice(); state.totalLen = 0; return; }
+
+      // 1) EMA smoothing on raw points
+      const s = clamp(state.smoothing, 0, 0.999);
+      const sm = [];
+      let ax = pts[0].x, ay = pts[0].y;
+      sm.push({x:ax,y:ay});
+      for (let i=1;i<pts.length;i++){
+        ax = ax * s + pts[i].x * (1-s);
+        ay = ay * s + pts[i].y * (1-s);
+        sm.push({x:ax,y:ay});
+      }
+
+      // 2) Resample to roughly constant spacing
+      const targetSpacing = 6; // px
+      const res = [sm[0]];
+      let carry = 0;
+      for (let i=1;i<sm.length;i++){
+        let a = sm[i-1], b = sm[i];
+        let segLen = dist2(a,b);
+        if (segLen < 1e-6) continue;
+        let dirx = (b.x-a.x)/segLen;
+        let diry = (b.y-a.y)/segLen;
+
+        let d = targetSpacing - carry;
+        while (d <= segLen){
+          res.push({ x: a.x + dirx * d, y: a.y + diry * d });
+          d += targetSpacing;
+        }
+        carry = (segLen + carry) % targetSpacing;
+      }
+      if (res.length < 2) res.push(sm[sm.length-1]);
+      state.path = res;
+
+      // 3) Precompute total length
+      let L = 0;
+      for (let i=1;i<res.length;i++) L += dist2(res[i-1], res[i]);
+      state.totalLen = L;
+    }
+
+    function samplePath(t){
+      const p = state.path;
+      if (p.length === 0) return {x: width/2, y: height/2};
+      if (p.length === 1) return {x: p[0].x, y: p[0].y};
+
+      // interpret t in [0,1) along polyline length
+      let target = t * state.totalLen;
+      for (let i=1;i<p.length;i++){
+        const a = p[i-1], b = p[i];
+        const seg = dist2(a,b);
+        if (target <= seg){
+          const u = seg < 1e-6 ? 0 : target/seg;
+          return { x: a.x + (b.x-a.x)*u, y: a.y + (b.y-a.y)*u };
+        }
+        target -= seg;
+      }
+      return {x: p[p.length-1].x, y: p[p.length-1].y};
+    }
+
+    class Particle{
+      constructor(x,y,vx,vy,col){
+        this.x=x; this.y=y;
+        this.vx=vx; this.vy=vy;
+        this.life=1;
+        this.spin=(Math.random()*2-1)*0.25;
+        this.r= Math.random()*2.6 + 1.2;
+        this.col=col;
+      }
+      step(dt){
+        // soft drag + curl-ish wobble
+        const drag = Math.pow(0.12, dt);
+        this.vx *= drag;
+        this.vy *= drag;
+        const t = (1-this.life);
+        const w = 1.6;
+        this.vx += Math.cos((this.x*0.01)+(t*8))*w*dt;
+        this.vy += Math.sin((this.y*0.01)+(t*8))*w*dt;
+        this.x += this.vx*dt;
+        this.y += this.vy*dt;
+        this.life -= 0.55*dt;
+      }
+      draw(pg){
+        const a = clamp(this.life,0,1);
+        pg.noStroke();
+        pg.fill(this.col[0], this.col[1], this.col[2], 220*a);
+        pg.circle(this.x, this.y, this.r*2);
+      }
+      get dead(){ return this.life <= 0; }
+    }
+
+    let pg;
+
+    new p5(p => {
+      p.setup = () => {
+        const cnv = p.createCanvas(p.windowWidth - (p.windowWidth>900?320:0), p.windowHeight);
+        cnv.parent('canvasHost');
+        p.pixelDensity(Math.min(2, window.devicePixelRatio || 1));
+        pg = p.createGraphics(p.width, p.height);
+        pg.pixelDensity(p.pixelDensity());
+        pg.background(10);
+        state.headPos = {x:p.width/2,y:p.height/2};
+        hookUI();
+      };
+
+      p.windowResized = () => {
+        const side = (p.windowWidth>900?320:0);
+        p.resizeCanvas(p.windowWidth - side, p.windowHeight);
+        const old = pg;
+        pg = p.createGraphics(p.width, p.height);
+        pg.pixelDensity(p.pixelDensity());
+        pg.background(10);
+        // redraw previous buffer scaled
+        pg.image(old, 0,0, p.width, p.height);
+        state.needsRebuild = true;
+      };
+
+      p.mousePressed = () => {
+        if (p.mouseX<0 || p.mouseX>p.width || p.mouseY<0 || p.mouseY>p.height) return;
+        if (state.mode === 'draw'){
+          state.isDrawing = true;
+          state.raw.push({x:p.mouseX,y:p.mouseY,t:p.millis()});
+          state.needsRebuild = true;
+        }
+      };
+
+      p.mouseDragged = () => {
+        if (!state.isDrawing) return;
+        if (state.mode !== 'draw') return;
+        const last = state.raw[state.raw.length-1];
+        const nx = p.mouseX, ny = p.mouseY;
+        if (nx<0||nx>p.width||ny<0||ny>p.height) return;
+        if (!last || Math.hypot(nx-last.x, ny-last.y) > 1.5){
+          state.raw.push({x:nx,y:ny,t:p.millis()});
+          state.needsRebuild = true;
+        }
+      };
+
+      p.mouseReleased = () => { state.isDrawing = false; };
+
+      p.keyPressed = () => {
+        if (p.key === ' '){ toggleDrawPlay(); }
+        if (p.key === 'c' || p.key === 'C'){ clearAll(); }
+        if (p.key === 'z' || p.key === 'Z'){ undoPoint(); }
+        if (p.key === 's' || p.key === 'S'){ p.saveCanvas('motion-tool', 'png'); }
+        if (p.key === 'e' || p.key === 'E'){
+          setMode(state.mode === 'emit' ? 'play' : 'emit');
+        }
+      };
+
+      p.draw = () => {
+        const dt = Math.min(0.05, p.deltaTime/1000);
+
+        // fade for trails
+        pg.noStroke();
+        pg.fill(10, 10, 14, 255 * clamp(state.trail, 0, 0.6));
+        pg.rect(0,0,p.width,p.height);
+
+        if (state.needsRebuild) rebuildPath();
+
+        // draw path preview in draw mode
+        if (state.mode === 'draw'){
+          pg.stroke(102, 227, 255, 190);
+          pg.strokeWeight(1.25);
+          pg.noFill();
+          if (state.raw.length >= 2){
+            pg.beginShape();
+            for (const pt of state.raw) pg.vertex(pt.x, pt.y);
+            pg.endShape();
+          }
+
+          // smoothed path
+          pg.stroke(176, 107, 255, 160);
+          pg.strokeWeight(2.0);
+          if (state.path.length >= 2){
+            pg.beginShape();
+            for (const pt of state.path) pg.vertex(pt.x, pt.y);
+            pg.endShape();
+          }
+        }
+
+        // playback head
+        if ((state.mode === 'play' || state.mode === 'emit') && state.path.length >= 2 && state.totalLen > 0){
+          const prev = state.headPos;
+          state.headT = (state.headT + dt * 0.08 * state.speed) % 1;
+          const pos = samplePath(state.headT);
+          state.headVel = {x:(pos.x - prev.x)/Math.max(1e-6,dt), y:(pos.y - prev.y)/Math.max(1e-6,dt)};
+          state.headPos = pos;
+
+          // draw ribbon stroke based on velocity
+          const v = Math.hypot(state.headVel.x, state.headVel.y);
+          const w = state.thickness * (0.75 + clamp(v/1200, 0, 1.5));
+
+          const hueMix = clamp(v/1400, 0, 1);
+          const r = p.lerp(102, 176, hueMix);
+          const g = p.lerp(227, 107, hueMix);
+          const b = p.lerp(255, 255, 0.0);
+
+          pg.stroke(r, g, b, 160);
+          pg.strokeWeight(w);
+          pg.strokeCap(p.ROUND);
+          pg.line(prev.x, prev.y, pos.x, pos.y);
+
+          // head glow
+          pg.noStroke();
+          pg.fill(r, g, b, 220);
+          pg.circle(pos.x, pos.y, 6 + w*0.35);
+          pg.fill(r, g, b, 60);
+          pg.circle(pos.x, pos.y, 26 + w*1.2);
+
+          if (state.mode === 'emit'){
+            // emit particles proportional to slider
+            const n = Math.floor(state.emitRate * (dt*60));
+            const base = [r,g,b];
+            for (let i=0;i<n;i++){
+              const ang = Math.atan2(state.headVel.y, state.headVel.x) + (Math.random()*2-1)*0.9;
+              const sp = 30 + Math.random()*220 + v*0.05;
+              const vx = Math.cos(ang)*sp + (Math.random()*2-1)*60;
+              const vy = Math.sin(ang)*sp + (Math.random()*2-1)*60;
+              state.particles.push(new Particle(pos.x, pos.y, vx, vy, base));
+            }
+          }
+        }
+
+        // particles
+        for (let i=state.particles.length-1;i>=0;i--){
+          const pt = state.particles[i];
+          pt.step(dt);
+          pt.draw(pg);
+          if (pt.dead) state.particles.splice(i,1);
+        }
+        // cap
+        if (state.particles.length > 2000) state.particles.splice(0, state.particles.length-2000);
+
+        // present
+        p.image(pg, 0,0);
+
+        // HUD
+        p.noStroke();
+        p.fill(0,0,0,0);
+      };
+    });
+
+    // ---- UI wiring ----
+    function hookUI(){
+      const $ = sel => document.querySelector(sel);
+      const bindPair = (rangeSel, numSel, onChange) => {
+        const r = $(rangeSel), n = $(numSel);
+        const syncFrom = (src, dst) => { dst.value = src.value; onChange(parseFloat(src.value)); };
+        r.addEventListener('input', () => syncFrom(r,n));
+        n.addEventListener('input', () => syncFrom(n,r));
+      };
+
+      $('#mode').addEventListener('change', e => setMode(e.target.value));
+
+      bindPair('#smoothing', '#smoothingN', v => { state.smoothing = v; state.needsRebuild = true; });
+      bindPair('#speed', '#speedN', v => state.speed = v);
+      bindPair('#trail', '#trailN', v => state.trail = v);
+      bindPair('#thickness', '#thicknessN', v => state.thickness = v);
+      bindPair('#particles', '#particlesN', v => state.emitRate = v);
+
+      $('#clear').addEventListener('click', clearAll);
+      $('#undo').addEventListener('click', undoPoint);
+      $('#toggle').addEventListener('click', toggleDrawPlay);
+      $('#export').addEventListener('click', copyJSON);
+      $('#import').addEventListener('click', pasteJSON);
+      $('#save').addEventListener('click', () => window.p5.instance?.saveCanvas('motion-tool','png'));
+
+      setMode('draw');
+    }
+
+    function setMode(m){
+      state.mode = m;
+      const modeSel = document.querySelector('#mode');
+      if (modeSel.value !== m) modeSel.value = m;
+      document.querySelector('#status').textContent =
+        m === 'draw' ? 'Draw mode' : (m === 'emit' ? 'Emit mode' : 'Playback mode');
+
+      if (m !== 'draw') state.isDrawing = false;
+      if (m === 'play' || m === 'emit'){
+        // reset head position to start for a clean run
+        state.headT = 0;
+      }
+    }
+
+    function toggleDrawPlay(){
+      if (state.mode === 'draw') setMode('play');
+      else setMode('draw');
+    }
+
+    function clearAll(){
+      state.raw = [];
+      state.path = [];
+      state.particles = [];
+      state.totalLen = 0;
+      state.needsRebuild = true;
+      // clear buffer
+      if (typeof pg !== 'undefined') pg.background(10);
+      setMode('draw');
+    }
+
+    function undoPoint(){
+      if (state.raw.length > 0){
+        state.raw.pop();
+        state.needsRebuild = true;
+      }
+    }
+
+    async function copyJSON(){
+      const data = { raw: state.raw };
+      const txt = JSON.stringify(data);
+      try{
+        await navigator.clipboard.writeText(txt);
+        flashStatus('Copied JSON');
+      }catch(e){
+        prompt('Copy JSON:', txt);
+      }
+    }
+
+    async function pasteJSON(){
+      let txt = '';
+      try{
+        txt = await navigator.clipboard.readText();
+      }catch(e){
+        txt = prompt('Paste JSON here:','') || '';
+      }
+      if (!txt) return;
+      try{
+        const data = JSON.parse(txt);
+        if (data && Array.isArray(data.raw)){
+          state.raw = data.raw.map(p => ({x:+p.x, y:+p.y, t: p.t ?? 0})).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+          state.needsRebuild = true;
+          flashStatus('Loaded JSON');
+          setMode('play');
+        }
+      }catch(e){
+        flashStatus('Invalid JSON');
+      }
+    }
+
+    let flashTO;
+    function flashStatus(msg){
+      const el = document.querySelector('#status');
+      const prev = el.textContent;
+      el.textContent = msg;
+      clearTimeout(flashTO);
+      flashTO = setTimeout(() => { el.textContent = (state.mode==='draw'?'Draw mode':state.mode==='emit'?'Emit mode':'Playback mode'); }, 900);
+    }
+
+    // small helper for save button; p5 instance exposure varies in embed contexts
+    // we keep it simple by also binding key 'S'
+  </script>
+</body>
+</html>

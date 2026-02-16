@@ -6,9 +6,12 @@ description: >
   interactive sketches, visualizations, animations, creative coding, procedural graphics,
   or anything involving p5.js or HTML Canvas. Do NOT use for 3D scenes (use threejs-and-shaders)
   or static SVG (use svg-and-animation).
+compatibility: >
+  Requires browser with HTML5 Canvas support. Output rendered in sandboxed iframe.
+  CDN access required for p5.js.
 metadata:
   author: chatooli
-  version: 2.0.0
+  version: 2.1.0
   category: creative-coding
 ---
 
@@ -23,6 +26,26 @@ Generate interactive, generative visuals as self-contained HTML files.
 - Use a **dark background** (e.g. `#0a0a0a`, `#1a1a2e`) for visual contrast.
 - Make sketches **interactive** (mouse position, click, touch, keyboard) when possible.
 - The HTML must work inside an iframe with `sandbox="allow-scripts allow-same-origin"`.
+
+## Examples
+
+### Example 1: Particle system
+User says: "Create a particle system that follows the mouse with rainbow trails"
+Actions:
+1. Create HTML with p5.js CDN import
+2. Spawn particles at `mouseX, mouseY` each frame with random velocity
+3. Use HSB color mode, cycle hue with `frameCount`
+4. Fade opacity with `life` counter, remove dead particles
+Result: Interactive rainbow particle trail that follows the cursor
+
+### Example 2: Generative art
+User says: "Make a Perlin noise flow field"
+Actions:
+1. Create Canvas API sketch with requestAnimationFrame loop
+2. Generate a grid of angle values using noise
+3. Spawn particles that follow the flow field vectors
+4. Draw particle trails with semi-transparent fill for ghosting effect
+Result: Organic, flowing particle visualization driven by noise
 
 ## p5.js Patterns
 
@@ -97,6 +120,24 @@ animate();
 - `mouseIsPressed` (p5) or `mousedown` for click interactions.
 - `keyPressed()` (p5) for keyboard triggers (e.g. spacebar to reset).
 - Touch: `touchStarted()`, `touchMoved()` in p5 for mobile.
+
+## Troubleshooting
+
+### Blank white canvas
+Cause: Missing `background()` call in `draw()` or no dark CSS background.
+Solution: Add `background(10)` at the start of `draw()` and `background: #0a0a0a` to `<body>`.
+
+### p5.js not loading
+Cause: CDN URL incorrect or blocked by iframe sandbox.
+Solution: Verify CDN URL is correct and uses HTTPS. The sandbox `allow-scripts allow-same-origin` flags are required.
+
+### Animation stuttering
+Cause: Unbounded array growth (e.g. particles never removed).
+Solution: Cap arrays with `splice(0, excess)` or filter by `life > 0`. Keep particle count under ~2000 for smooth performance.
+
+### Canvas not filling viewport
+Cause: Missing `windowResized()` handler or `margin` on body.
+Solution: Add `body { margin: 0; overflow: hidden; }` CSS and `function windowResized() { resizeCanvas(windowWidth, windowHeight); }`.
 
 ## Quality checklist
 Before returning code:

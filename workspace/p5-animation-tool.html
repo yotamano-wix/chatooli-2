@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>p5 Animation Tool</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: rgba(18, 18, 22, 0.92);
+      --panel2: rgba(24, 24, 30, 0.92);
+      --text: rgba(255,255,255,0.9);
+      --muted: rgba(255,255,255,0.65);
+      --accent: #00e5ff;
+      --accent2: #ff3d9a;
+      --border: rgba(255,255,255,0.12);
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: radial-gradient(1200px 800px at 30% 30%, #11142a 0%, var(--bg) 60%);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    #ui {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      width: min(360px, calc(100vw - 24px));
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+      padding: 12px;
+      user-select: none;
+    }
+    #ui header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    #ui .title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      line-height: 1.1;
+    }
+    #ui .title strong { font-size: 14px; letter-spacing: 0.2px; }
+    #ui .title span { font-size: 12px; color: var(--muted); }
+    #ui .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform 0.06s ease, border-color 0.2s ease;
+    }
+    button:hover { border-color: rgba(255,255,255,0.22); }
+    button:active { transform: translateY(1px); }
+    button.primary {
+      border-color: rgba(0,229,255,0.35);
+      box-shadow: inset 0 0 0 1px rgba(0,229,255,0.12);
+    }
+    button.danger {
+      border-color: rgba(255, 61, 154, 0.35);
+      box-shadow: inset 0 0 0 1px rgba(255, 61, 154, 0.12);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 112px 1fr 46px;
+      align-items: center;
+      gap: 10px;
+    }
+    .row label { font-size: 12px; color: var(--muted); }
+    .row output {
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: rgba(255,255,255,0.82);
+      justify-self: end;
+    }
+    input[type="range"] { width: 100%; }
+    .hint {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    kbd {
+      font-size: 11px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-bottom-color: rgba(255,255,255,0.18);
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: rgba(255,255,255,0.88);
+    }
+    #toast {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      background: rgba(18,18,22,0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 10px 12px;
+      max-width: min(420px, calc(100vw - 28px));
+      color: rgba(255,255,255,0.9);
+      font-size: 12px;
+      line-height: 1.35;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      pointer-events: none;
+      white-space: pre-wrap;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <header>
+      <div class="title">
+        <strong>p5 Animation Tool</strong>
+        <span>Keyframe + timeline doodler (export as JSON)</span>
+      </div>
+      <div class="btnrow">
+        <button id="btnPlay" class="primary">Play</button>
+        <button id="btnRec" class="danger">Record</button>
+      </div>
+    </header>
+
+    <div class="btnrow">
+      <button id="btnAdd">Add keyframe</button>
+      <button id="btnDel">Delete keyframe</button>
+      <button id="btnCopy">Copy JSON</button>
+      <button id="btnLoad">Load JSON</button>
+      <button id="btnReset">Reset</button>
+    </div>
+
+    <div class="grid">
+      <div class="row">
+        <label>Time</label>
+        <input id="time" type="range" min="0" max="1" step="0.0001" value="0" />
+        <output id="timeOut">0.000</output>
+      </div>
+      <div class="row">
+        <label>Duration (s)</label>
+        <input id="duration" type="range" min="0.5" max="20" step="0.1" value="6" />
+        <output id="durOut">6.0</output>
+      </div>
+      <div class="row">
+        <label>Trails</label>
+        <input id="trails" type="range" min="0" max="1" step="0.01" value="0.12" />
+        <output id="trailsOut">0.12</output>
+      </div>
+      <div class="row">
+        <label>Flow</label>
+        <input id="flow" type="range" min="0" max="1" step="0.01" value="0.55" />
+        <output id="flowOut">0.55</output>
+      </div>
+      <div class="row">
+        <label>Spin</label>
+        <input id="spin" type="range" min="0" max="1" step="0.01" value="0.35" />
+        <output id="spinOut">0.35</output>
+      </div>
+      <div class="row">
+        <label>Bloom</label>
+        <input id="bloom" type="range" min="0" max="1" step="0.01" value="0.6" />
+        <output id="bloomOut">0.60</output>
+      </div>
+    </div>
+
+    <div class="hint">
+      <div><kbd>Space</kbd> play/pause • <kbd>R</kbd> record • <kbd>K</kbd> add keyframe • <kbd>Backspace</kbd> delete • <kbd>C</kbd> copy JSON</div>
+      <div style="margin-top:6px;">Click-drag on the canvas to draw a motion path (saved into keyframes while recording).</div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+<script>
+// --- Small animation system: keyframes + interpolation + optional recorded path ---
+
+const UI = {};
+let playing = false;
+let recording = false;
+let tNorm = 0; // 0..1
+let lastMillis = 0;
+
+// Current "rig" parameters that are animatable
+let rig = {
+  flow: 0.55,
+  spin: 0.35,
+  bloom: 0.6,
+  // path: array of {x,y} in normalized (0..1) screen space
+  path: []
+};
+
+// Keyframes: each has t in [0,1] and values
+let keyframes = [
+  { t: 0.00, v: { flow: 0.35, spin: 0.15, bloom: 0.55, path: [] } },
+  { t: 0.45, v: { flow: 0.85, spin: 0.65, bloom: 0.75, path: [] } },
+  { t: 1.00, v: { flow: 0.55, spin: 0.35, bloom: 0.60, path: [] } },
+];
+
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function lerp(a,b,t){ return a + (b-a)*t; }
+function smoothstep(t){ return t*t*(3-2*t); }
+
+function sortKeyframes(){ keyframes.sort((a,b)=>a.t-b.t); }
+
+function nearestKeyframeIndex(t){
+  let best = 0;
+  let bestD = Infinity;
+  for (let i=0;i<keyframes.length;i++){
+    const d = Math.abs(keyframes[i].t - t);
+    if (d < bestD){ bestD = d; best = i; }
+  }
+  return best;
+}
+
+function sampleKeyframes(t){
+  if (keyframes.length === 0) return { ...rig, path: rig.path.slice() };
+  sortKeyframes();
+
+  if (t <= keyframes[0].t) return deepCloneV(keyframes[0].v);
+  if (t >= keyframes[keyframes.length-1].t) return deepCloneV(keyframes[keyframes.length-1].v);
+
+  let a = keyframes[0], b = keyframes[1];
+  for (let i=0;i<keyframes.length-1;i++){
+    if (t >= keyframes[i].t && t <= keyframes[i+1].t){ a = keyframes[i]; b = keyframes[i+1]; break; }
+  }
+  const span = Math.max(1e-6, (b.t - a.t));
+  let u = (t - a.t) / span;
+  u = smoothstep(u);
+
+  // Numeric channels interpolate; path chooses nearer key (or blend simple)
+  const out = {
+    flow: lerp(a.v.flow, b.v.flow, u),
+    spin: lerp(a.v.spin, b.v.spin, u),
+    bloom: lerp(a.v.bloom, b.v.bloom, u),
+    path: (u < 0.5 ? (a.v.path||[]) : (b.v.path||[])).map(p => ({x:p.x,y:p.y}))
+  };
+  return out;
+}
+
+function deepCloneV(v){
+  return {
+    flow: v.flow,
+    spin: v.spin,
+    bloom: v.bloom,
+    path: (v.path||[]).map(p => ({x:p.x,y:p.y}))
+  };
+}
+
+function addKeyframeAt(t){
+  const v = deepCloneV(rig);
+  keyframes.push({ t: clamp01(t), v });
+  sortKeyframes();
+}
+
+function deleteNearestKeyframe(t){
+  if (keyframes.length <= 1) return;
+  const idx = nearestKeyframeIndex(t);
+  keyframes.splice(idx, 1);
+}
+
+function exportJSON(){
+  sortKeyframes();
+  return JSON.stringify({
+    version: 1,
+    duration: parseFloat(UI.duration.value),
+    keyframes
+  }, null, 2);
+}
+
+function importJSON(text){
+  const data = JSON.parse(text);
+  if (!data || !Array.isArray(data.keyframes)) throw new Error('Invalid JSON: expected {keyframes:[...]}.');
+  keyframes = data.keyframes.map(k => ({
+    t: clamp01(Number(k.t)),
+    v: {
+      flow: Number(k.v?.flow ?? 0.5),
+      spin: Number(k.v?.spin ?? 0.5),
+      bloom: Number(k.v?.bloom ?? 0.5),
+      path: Array.isArray(k.v?.path) ? k.v.path.map(p => ({x: clamp01(Number(p.x)), y: clamp01(Number(p.y))})) : []
+    }
+  }));
+  sortKeyframes();
+  if (typeof data.duration === 'number') UI.duration.value = String(data.duration);
+  syncUIOutputs();
+  toast('Loaded animation JSON.');
+}
+
+// --- UI wiring ---
+function $(sel){ return document.querySelector(sel); }
+
+function syncUIOutputs(){
+  UI.timeOut.textContent = Number(UI.time.value).toFixed(3);
+  UI.durOut.textContent = Number(UI.duration.value).toFixed(1);
+  UI.trailsOut.textContent = Number(UI.trails.value).toFixed(2);
+  UI.flowOut.textContent = Number(UI.flow.value).toFixed(2);
+  UI.spinOut.textContent = Number(UI.spin.value).toFixed(2);
+  UI.bloomOut.textContent = Number(UI.bloom.value).toFixed(2);
+}
+
+function applySlidersToRig(){
+  rig.flow = Number(UI.flow.value);
+  rig.spin = Number(UI.spin.value);
+  rig.bloom = Number(UI.bloom.value);
+}
+
+function applyRigToSliders(){
+  UI.flow.value = String(rig.flow);
+  UI.spin.value = String(rig.spin);
+  UI.bloom.value = String(rig.bloom);
+  syncUIOutputs();
+}
+
+function toast(msg){
+  const el = UI.toast;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=> el.classList.remove('show'), 1700);
+}
+
+function togglePlay(){
+  playing = !playing;
+  UI.btnPlay.textContent = playing ? 'Pause' : 'Play';
+}
+
+function toggleRecord(){
+  recording = !recording;
+  UI.btnRec.textContent = recording ? 'Recording…' : 'Record';
+  if (recording){
+    // Ensure there is a keyframe at current time to edit
+    addKeyframeAt(tNorm);
+    toast('Recording: drag on canvas to set path; sliders update this keyframe.');
+  } else {
+    toast('Recording stopped.');
+  }
+}
+
+function resetAll(){
+  tNorm = 0;
+  UI.time.value = '0';
+  rig.path = [];
+  keyframes = [
+    { t: 0.00, v: { flow: 0.35, spin: 0.15, bloom: 0.55, path: [] } },
+    { t: 0.45, v: { flow: 0.85, spin: 0.65, bloom: 0.75, path: [] } },
+    { t: 1.00, v: { flow: 0.55, spin: 0.35, bloom: 0.60, path: [] } },
+  ];
+  applyRigToSliders();
+  syncUIOutputs();
+  toast('Reset.');
+}
+
+function initUI(){
+  UI.time = $('#time');
+  UI.duration = $('#duration');
+  UI.trails = $('#trails');
+  UI.flow = $('#flow');
+  UI.spin = $('#spin');
+  UI.bloom = $('#bloom');
+
+  UI.timeOut = $('#timeOut');
+  UI.durOut = $('#durOut');
+  UI.trailsOut = $('#trailsOut');
+  UI.flowOut = $('#flowOut');
+  UI.spinOut = $('#spinOut');
+  UI.bloomOut = $('#bloomOut');
+
+  UI.btnPlay = $('#btnPlay');
+  UI.btnRec = $('#btnRec');
+  UI.btnAdd = $('#btnAdd');
+  UI.btnDel = $('#btnDel');
+  UI.btnCopy = $('#btnCopy');
+  UI.btnLoad = $('#btnLoad');
+  UI.btnReset = $('#btnReset');
+  UI.toast = $('#toast');
+
+  syncUIOutputs();
+
+  UI.time.addEventListener('input', () => {
+    tNorm = Number(UI.time.value);
+    syncUIOutputs();
+    if (!recording) {
+      rig = sampleKeyframes(tNorm);
+      applyRigToSliders();
+    }
+  });
+
+  for (const el of [UI.duration, UI.trails, UI.flow, UI.spin, UI.bloom]){
+    el.addEventListener('input', () => {
+      syncUIOutputs();
+      applySlidersToRig();
+      if (recording){
+        // Write current rig values into nearest keyframe
+        const idx = nearestKeyframeIndex(tNorm);
+        keyframes[idx].v.flow = rig.flow;
+        keyframes[idx].v.spin = rig.spin;
+        keyframes[idx].v.bloom = rig.bloom;
+      }
+    });
+  }
+
+  UI.btnPlay.addEventListener('click', togglePlay);
+  UI.btnRec.addEventListener('click', toggleRecord);
+
+  UI.btnAdd.addEventListener('click', () => {
+    addKeyframeAt(tNorm);
+    toast(`Keyframe added @ ${tNorm.toFixed(3)}`);
+  });
+  UI.btnDel.addEventListener('click', () => {
+    deleteNearestKeyframe(tNorm);
+    toast('Nearest keyframe deleted.');
+  });
+
+  UI.btnCopy.addEventListener('click', async () => {
+    const text = exportJSON();
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied JSON to clipboard.');
+    } catch (e){
+      // fallback prompt
+      window.prompt('Copy animation JSON:', text);
+    }
+  });
+
+  UI.btnLoad.addEventListener('click', async () => {
+    const text = window.prompt('Paste animation JSON:');
+    if (!text) return;
+    try {
+      importJSON(text);
+      // jump to first keyframe
+      tNorm = clamp01(tNorm);
+      UI.time.value = String(tNorm);
+      rig = sampleKeyframes(tNorm);
+      applyRigToSliders();
+    } catch (e){
+      toast('Load failed: ' + e.message);
+    }
+  });
+
+  UI.btnReset.addEventListener('click', resetAll);
+}
+
+// --- p5 sketch ---
+
+let particles = [];
+
+function setup(){
+  createCanvas(windowWidth, windowHeight);
+  colorMode(HSB, 360, 100, 100, 100);
+  noStroke();
+  initUI();
+  applySlidersToRig();
+  lastMillis = millis();
+  background(0);
+}
+
+function windowResized(){
+  resizeCanvas(windowWidth, windowHeight);
+  background(0);
+}
+
+function keyPressed(){
+  if (key === ' '){ togglePlay(); return false; }
+  if (key === 'r' || key === 'R'){ toggleRecord(); return false; }
+  if (key === 'k' || key === 'K'){ addKeyframeAt(tNorm); toast(`Keyframe added @ ${tNorm.toFixed(3)}`); return false; }
+  if (key === 'c' || key === 'C'){
+    const text = exportJSON();
+    navigator.clipboard?.writeText(text);
+    toast('Copied JSON to clipboard.');
+    return false;
+  }
+  if (keyCode === BACKSPACE || keyCode === DELETE){ deleteNearestKeyframe(tNorm); toast('Nearest keyframe deleted.'); return false; }
+}
+
+function mousePressed(){
+  // ignore clicks on UI
+  const ui = document.getElementById('ui');
+  if (ui && ui.contains(document.elementFromPoint(mouseX, mouseY))) return;
+  if (recording){
+    rig.path = [];
+    pushPathPoint(mouseX, mouseY);
+    writePathToNearestKeyframe();
+  }
+}
+
+function mouseDragged(){
+  const ui = document.getElementById('ui');
+  if (ui && ui.contains(document.elementFromPoint(mouseX, mouseY))) return;
+  if (recording){
+    pushPathPoint(mouseX, mouseY);
+    writePathToNearestKeyframe();
+  }
+}
+
+function pushPathPoint(x,y){
+  const p = { x: clamp01(x / width), y: clamp01(y / height) };
+  const last = rig.path[rig.path.length-1];
+  if (!last || dist(last.x, last.y, p.x, p.y) > 0.003){
+    rig.path.push(p);
+    if (rig.path.length > 300) rig.path.shift();
+  }
+}
+
+function writePathToNearestKeyframe(){
+  const idx = nearestKeyframeIndex(tNorm);
+  keyframes[idx].v.path = rig.path.map(p => ({x:p.x,y:p.y}));
+}
+
+function draw(){
+  const now = millis();
+  const dt = Math.min(0.05, (now - lastMillis) / 1000);
+  lastMillis = now;
+
+  // advance time
+  const duration = Number(UI.duration.value);
+  if (playing){
+    tNorm = (tNorm + dt / Math.max(0.001, duration)) % 1;
+    UI.time.value = String(tNorm);
+    syncUIOutputs();
+  }
+
+  // choose rig
+  if (!recording){
+    rig = sampleKeyframes(tNorm);
+    applyRigToSliders();
+  } else {
+    // in record mode, rig follows sliders
+    applySlidersToRig();
+  }
+
+  // trail fade
+  const trails = Number(UI.trails.value);
+  background(0, 0, 0, trails * 100);
+
+  // emit particles along either recorded path or a procedural orbit
+  const path = rig.path && rig.path.length > 3 ? rig.path : null;
+  const emitCount = 6;
+
+  for (let i=0;i<emitCount;i++){
+    const u = (tNorm + i/emitCount * 0.12) % 1;
+    let x, y;
+    if (path){
+      const idx = Math.floor(u * (path.length-1));
+      const a = path[idx];
+      const b = path[Math.min(path.length-1, idx+1)];
+      const f = u * (path.length-1) - idx;
+      x = lerp(a.x, b.x, f) * width;
+      y = lerp(a.y, b.y, f) * height;
+    } else {
+      const cx = width*0.5, cy = height*0.5;
+      const r = Math.min(width, height) * (0.12 + 0.18*rig.flow);
+      const ang = u*TWO_PI*(1.0 + 2.0*rig.spin) + now*0.0002*(1+3*rig.spin);
+      x = cx + Math.cos(ang) * r;
+      y = cy + Math.sin(ang*1.08) * r;
+    }
+
+    spawnParticle(x, y, u);
+  }
+
+  // update + draw particles
+  const flow = rig.flow;
+  const spin = rig.spin;
+  const bloom = rig.bloom;
+
+  blendMode(ADD);
+  for (let p of particles){
+    // flow field
+    const n = noise(p.x*0.0025, p.y*0.0025, now*0.00015);
+    const ang = n*TWO_PI*2 + p.seed*4 + (spin*3.0);
+    const spd = lerp(0.4, 3.0, flow);
+    p.vx = lerp(p.vx, Math.cos(ang)*spd, 0.08 + flow*0.12);
+    p.vy = lerp(p.vy, Math.sin(ang)*spd, 0.08 + flow*0.12);
+
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 1;
+
+    const a = map(p.life, 0, p.lifeMax, 0, 70);
+    const s = map(p.life, 0, p.lifeMax, p.sz*0.2, p.sz);
+
+    // glow-ish via layered circles
+    const hue = (p.h + frameCount*0.25) % 360;
+    const sat = 80;
+    const bri = 90;
+
+    if (bloom > 0.01){
+      fill(hue, sat, bri, a * (0.18 + 0.65*bloom));
+      circle(p.x, p.y, s * (3.2 + 5.0*bloom));
+    }
+
+    fill(hue, sat, bri, a);
+    circle(p.x, p.y, s);
+  }
+  blendMode(BLEND);
+
+  // cull
+  particles = particles.filter(p => p.life > 0 && p.x>-200 && p.x<width+200 && p.y>-200 && p.y<height+200);
+  if (particles.length > 2200) particles.splice(0, particles.length - 2200);
+
+  // overlay: timeline + keyframes
+  drawTimeline();
+}
+
+function spawnParticle(x, y, u){
+  const hue = (u*360 + frameCount*0.8) % 360;
+  particles.push({
+    x, y,
+    vx: random(-0.5,0.5),
+    vy: random(-0.5,0.5),
+    sz: random(2.0, 6.5),
+    lifeMax: Math.floor(random(40, 120)),
+    life: 0, // will set below
+    h: hue,
+    seed: random(10)
+  });
+  particles[particles.length-1].life = particles[particles.length-1].lifeMax;
+}
+
+function drawTimeline(){
+  const pad = 14;
+  const w = Math.min(520, width - pad*2);
+  const h = 46;
+  const x0 = width - w - pad;
+  const y0 = pad;
+
+  // panel
+  noStroke();
+  fill(0, 0, 0, 35);
+  rect(x0, y0, w, h, 12);
+  stroke(255, 20);
+  noFill();
+  rect(x0, y0, w, h, 12);
+
+  // keyframes
+  noStroke();
+  for (let i=0;i<keyframes.length;i++){
+    const k = keyframes[i];
+    const x = x0 + k.t * w;
+    const y = y0 + h*0.55;
+
+    const isNear = Math.abs(k.t - tNorm) < 0.02;
+    const size = isNear ? 10 : 7;
+
+    fill(190, 80, 90, isNear ? 95 : 70);
+    circle(x, y, size);
+  }
+
+  // playhead
+  const px = x0 + tNorm * w;
+  stroke(180, 0, 100, 80);
+  line(px, y0+10, px, y0+h-10);
+
+  // labels
+  noStroke();
+  fill(0, 0, 100, 70);
+  textSize(12);
+  textAlign(LEFT, CENTER);
+  text('Timeline', x0+12, y0+14);
+  textAlign(RIGHT, CENTER);
+  const status = `${playing ? 'PLAY' : 'PAUSE'}${recording ? ' • REC' : ''} • kf:${keyframes.length}`;
+  text(status, x0+w-12, y0+14);
+}
+
+</script>
+</body>
+</html>

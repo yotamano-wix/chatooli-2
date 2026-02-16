@@ -5,9 +5,12 @@ description: >
   SVG art, vector graphics, text-on-path, CSS animations, motion graphics, animated logos,
   or any scalable vector visual. Also use for CSS-only animations and Web Animations API.
   Do NOT use for Canvas/p5.js (use creative-coding) or 3D/shaders (use threejs-and-shaders).
+compatibility: >
+  Requires browser with SVG and CSS animations support. No external dependencies.
+  Output rendered in sandboxed iframe.
 metadata:
   author: chatooli
-  version: 2.0.0
+  version: 2.1.0
   category: creative-coding
 ---
 
@@ -22,6 +25,26 @@ Generate animated SVG and CSS/JS motion graphics as self-contained HTML files.
 - Use a **dark background** (e.g. `#0a0a0a`, `#1a1a2e`).
 - Center the SVG in the viewport using flexbox.
 - The HTML must work inside an iframe with `sandbox="allow-scripts allow-same-origin"`.
+
+## Examples
+
+### Example 1: Animated logo
+User says: "Generate an SVG animation with text orbiting along a curved path"
+Actions:
+1. Create HTML with inline SVG, define a circular or elliptical `<path>` in `<defs>`
+2. Place `<text>` with `<textPath>` referencing the path
+3. Animate `startOffset` with `<animate>` from 0% to 100% on infinite loop
+4. Style with white text on dark background, smooth easing
+Result: Text smoothly orbiting along a curved SVG path
+
+### Example 2: Geometric pattern
+User says: "Make a pulsing geometric mandala"
+Actions:
+1. Create concentric circles and rotated polygon groups in SVG
+2. Apply CSS `@keyframes` for scale pulsing and rotation
+3. Stagger animation delays for each ring to create wave effect
+4. Use radial gradient fills with complementary colors
+Result: Mesmerizing pulsing mandala with layered geometric shapes
 
 ## SVG Fundamentals
 
@@ -124,6 +147,24 @@ element.animate([
 - Use `fill`, `stroke` attributes
 - Gradients: `<linearGradient>`, `<radialGradient>` in `<defs>`
 - Filters: `<feGaussianBlur>` for glow, `<feColorMatrix>` for color shifts
+
+## Troubleshooting
+
+### SVG not visible
+Cause: Missing `viewBox` attribute or zero-size SVG.
+Solution: Always set `viewBox="0 0 width height"` and ensure the SVG or its container has explicit dimensions.
+
+### Animation not playing
+Cause: CSS `transform-origin` not set for rotations, or SMIL `<animate>` syntax error.
+Solution: For CSS rotations, add `transform-origin: center` on the element. For SMIL, ensure `attributeName` matches the attribute exactly (case-sensitive).
+
+### Text on path not showing
+Cause: `<textPath>` `href` doesn't match the path's `id`, or path has zero length.
+Solution: Verify `href="#pathId"` matches `<path id="pathId">`. Ensure the path `d` attribute defines a visible curve.
+
+### Jerky animations
+Cause: Animating layout-triggering properties (width, height, top, left).
+Solution: Use `transform` and `opacity` for smooth GPU-accelerated animations. Avoid animating dimensions directly.
 
 ## Quality checklist
 - [ ] Single self-contained HTML file
