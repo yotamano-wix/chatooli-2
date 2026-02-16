@@ -6,13 +6,13 @@
 import { Agent } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { getSystemPrompt, getMatchedSkills } from "./prompts.js";
+import { getSystemPrompt, getMatchedSkills, getArtDirectorPrompt } from "./prompts.js";
 import { type HistoryMessage } from "./sessions.js";
 import * as fs from "./tools/filesystem.js";
 import { executePythonCode } from "./tools/sandbox.js";
 import { extractCodeBlocks } from "./utils.js";
 
-const DEFAULT_MODEL = "google/gemini-3-pro-preview";
+const DEFAULT_MODEL = "openai/gpt-5.2";
 const MAX_STEPS = 20;
 
 // ---------- Types ----------
@@ -29,6 +29,7 @@ export interface EngineResponse {
   files_changed: string[];
   tool_calls: ToolCallInfo[];
   skills_used: string[];
+  design_brief?: string;
 }
 
 // ---------- Model resolution ----------
@@ -82,9 +83,81 @@ function resolveModel(modelId: string | null): ResolvedModel {
   return { modelId: `openai/${name}`, isReasoning: false };
 }
 
+// ---------- Art Director ----------
+
+const ART_DIRECTOR_MAX_STEPS = 8;
+
+/** Create read-only tools for the Art Director (no write/edit access). */
+function createArtDirectorTools(workspacePath: string) {
+  const root = workspacePath;
+  return {
+    list_files: createTool({
+      id: "list_files",
+      description:
+        "List files and directories at path (relative to workspace). Use recursive=True for full tree.",
+      inputSchema: z.object({
+        path: z.string().default("."),
+        recursive: z.boolean().default(false),
+      }),
+      execute: async (inputData) => {
+        try {
+          return await fs.listFiles(inputData.path, root, inputData.recursive);
+        } catch (e) {
+          return `Error: ${e instanceof Error ? e.message : e}`;
+        }
+      },
+    }),
+    read_file: createTool({
+      id: "read_file",
+      description:
+        "Read a file from the workspace. path is relative to the workspace root.",
+      inputSchema: z.object({ path: z.string().describe("Relative path to file") }),
+      execute: async (inputData) => {
+        try {
+          return await fs.readFile(inputData.path, root);
+        } catch (e) {
+          return `Error: ${e instanceof Error ? e.message : e}`;
+        }
+      },
+    }),
+  };
+}
+
+/**
+ * Run the Art Director agent to produce a design brief.
+ * The Art Director has read-only workspace access and returns a structured brief.
+ */
+export async function runArtDirector(
+  request: string,
+  workspacePath: string,
+  model: string | null
+): Promise<string> {
+  const resolved = resolveModel(model);
+  const tools = createArtDirectorTools(workspacePath);
+  const prompt = getArtDirectorPrompt();
+
+  const agent = new Agent({
+    id: "chatooli-art-director",
+    name: "Chatooli Art Director",
+    instructions: prompt,
+    model: resolved.modelId,
+    tools,
+  });
+
+  const result = await agent.generate(
+    [{ role: "user" as const, content: request }],
+    {
+      maxSteps: ART_DIRECTOR_MAX_STEPS,
+      ...(resolved.providerOptions ? { providerOptions: resolved.providerOptions } : {}),
+    }
+  );
+
+  return result.text ?? "";
+}
+
 // ---------- Tools ----------
 
-function createMastraTools(workspacePath: string, filesChanged: string[]) {
+function createMastraTools(workspacePath: string, filesChanged: string[], model: string | null) {
   const root = workspacePath;
   return {
     read_file: createTool({
@@ -206,6 +279,27 @@ function createMastraTools(workspacePath: string, filesChanged: string[]) {
         }
       },
     }),
+    consult_art_director: createTool({
+      id: "consult_art_director",
+      description:
+        "Consult the Art Director for creative direction on a new piece or major redesign. " +
+        "Use for new creative work, major visual changes, or when you need design guidance. " +
+        "Pass a clear description of what you need direction on, including relevant context " +
+        "about what exists and what the user wants. Returns a structured design brief.",
+      inputSchema: z.object({
+        request: z.string().describe(
+          "What you need the Art Director's input on. Include the user's request " +
+          "and any relevant context about the current workspace state."
+        ),
+      }),
+      execute: async (inputData) => {
+        try {
+          return await runArtDirector(inputData.request, root, model);
+        } catch (e) {
+          return `Art Director unavailable: ${e instanceof Error ? e.message : e}. Proceed with your best judgment.`;
+        }
+      },
+    }),
   };
 }
 
@@ -227,15 +321,25 @@ async function buildAgent(
   message: string,
   workspacePath: string,
   model: string | null,
-  filesChanged: string[]
+  filesChanged: string[],
+  designBrief?: string
 ) {
-  const tools = createMastraTools(workspacePath, filesChanged);
+  const tools = createMastraTools(workspacePath, filesChanged, model);
   const resolved = resolveModel(model);
   const systemPrompt = await getSystemPrompt();
   const { names: skillsUsed, context: skillContext } = await getMatchedSkills(message);
-  const fullInstructions = skillContext
-    ? `${systemPrompt}\n\n${skillContext}`
-    : systemPrompt;
+
+  const parts = [systemPrompt];
+  if (skillContext) parts.push(skillContext);
+  if (designBrief) {
+    parts.push(
+      "## Current Design Brief\n\n" +
+      "The Art Director has reviewed this request and produced the following brief. " +
+      "Follow this as your creative direction.\n\n" +
+      designBrief
+    );
+  }
+  const fullInstructions = parts.join("\n\n");
 
   const agent = new Agent({
     id: "chatooli-creative",
@@ -258,7 +362,23 @@ export async function runAgent(
 ): Promise<EngineResponse> {
   const filesChanged: string[] = [];
   const toolCalls: ToolCallInfo[] = [];
-  const { agent, resolved, skillsUsed } = await buildAgent(message, workspacePath, model, filesChanged);
+
+  // First message in session → auto-run Art Director
+  const isFirstMessage = history.length === 0;
+  let designBrief = "";
+  if (isFirstMessage) {
+    try {
+      console.log("[art-director] auto-running for first message");
+      designBrief = await runArtDirector(message, workspacePath, model);
+      console.log(`[art-director] brief generated (${designBrief.length} chars)`);
+    } catch (err) {
+      console.error("[art-director] failed, proceeding without brief:", err);
+    }
+  }
+
+  const { agent, resolved, skillsUsed } = await buildAgent(
+    message, workspacePath, model, filesChanged, designBrief || undefined
+  );
   const messages = buildMessages(history, message);
 
   const result = await agent.generate(messages as Parameters<Agent["generate"]>[0], {
@@ -299,12 +419,15 @@ export async function runAgent(
     files_changed: filesChanged,
     tool_calls: toolCalls,
     skills_used: skillsUsed,
+    ...(designBrief ? { design_brief: designBrief } : {}),
   };
 }
 
 // ---------- SSE event types ----------
 
 export type SSEEvent =
+  | { type: "art_director_start"; data: Record<string, never> }
+  | { type: "design_brief"; data: { brief: string } }
   | { type: "skills"; data: { skills: string[] } }
   | { type: "reasoning_start"; data: Record<string, never> }
   | { type: "reasoning"; data: { text: string } }
@@ -326,7 +449,27 @@ export async function* streamAgent(
 ): AsyncGenerator<SSEEvent> {
   const filesChanged: string[] = [];
   const toolCalls: ToolCallInfo[] = [];
-  const { agent, resolved, skillsUsed } = await buildAgent(message, workspacePath, model, filesChanged);
+
+  // First message in session → auto-run Art Director
+  const isFirstMessage = history.length === 0;
+  let designBrief = "";
+  if (isFirstMessage) {
+    yield { type: "art_director_start", data: {} };
+    try {
+      console.log("[art-director] auto-running for first message (stream)");
+      designBrief = await runArtDirector(message, workspacePath, model);
+      console.log(`[art-director] brief generated (${designBrief.length} chars)`);
+      if (designBrief) {
+        yield { type: "design_brief", data: { brief: designBrief } };
+      }
+    } catch (err) {
+      console.error("[art-director] failed, proceeding without brief:", err);
+    }
+  }
+
+  const { agent, resolved, skillsUsed } = await buildAgent(
+    message, workspacePath, model, filesChanged, designBrief || undefined
+  );
 
   if (skillsUsed.length > 0) {
     yield { type: "skills", data: { skills: skillsUsed } };
@@ -433,6 +576,7 @@ export async function* streamAgent(
       files_changed: filesChanged,
       tool_calls: toolCalls,
       skills_used: skillsUsed,
+      ...(designBrief ? { design_brief: designBrief } : {}),
     },
   };
 

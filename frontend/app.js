@@ -175,7 +175,11 @@ async function sendMessage() {
 }
 
 function handleSSEEvent(type, data) {
-    if (type === 'skills') {
+    if (type === 'art_director_start') {
+        appendArtDirectorStart();
+    } else if (type === 'design_brief') {
+        appendDesignBrief(data.brief);
+    } else if (type === 'skills') {
         appendSkillsBadges(data.skills);
     } else if (type === 'reasoning_start') {
         onReasoningStart();
@@ -215,6 +219,77 @@ function appendSkillsBadges(skills) {
     scrollToBottom();
 }
 
+let artDirectorDiv = null;
+
+function appendArtDirectorStart() {
+    const div = document.createElement('div');
+    div.className = 'message message-art-director';
+
+    const paintIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>';
+
+    div.innerHTML = `
+        <div class="art-director-header">
+            ${paintIcon}
+            <span class="art-director-label">Art Director is reviewing...</span>
+            <span class="art-director-spinner"></span>
+        </div>
+        <div class="art-director-body"></div>
+    `;
+
+    const target = activeThinkingBlock
+        ? activeThinkingBlock.querySelector('.thinking-body')
+        : chatMessages;
+    target.appendChild(div);
+    artDirectorDiv = div;
+    scrollToBottom();
+}
+
+function appendDesignBrief(brief) {
+    if (!brief) return;
+
+    if (artDirectorDiv) {
+        artDirectorDiv.querySelector('.art-director-label').textContent = 'Art Director';
+        const spinner = artDirectorDiv.querySelector('.art-director-spinner');
+        if (spinner) spinner.remove();
+
+        const body = artDirectorDiv.querySelector('.art-director-body');
+        body.innerHTML = formatMessage(brief);
+        artDirectorDiv.classList.add('has-brief');
+
+        const header = artDirectorDiv.querySelector('.art-director-header');
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', () => {
+            artDirectorDiv.classList.toggle('collapsed');
+        });
+
+        artDirectorDiv = null;
+    } else {
+        const div = document.createElement('div');
+        div.className = 'message message-art-director has-brief';
+
+        const paintIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>';
+
+        div.innerHTML = `
+            <div class="art-director-header" style="cursor:pointer">
+                ${paintIcon}
+                <span class="art-director-label">Art Director</span>
+            </div>
+            <div class="art-director-body">${formatMessage(brief)}</div>
+        `;
+
+        div.querySelector('.art-director-header').addEventListener('click', () => {
+            div.classList.toggle('collapsed');
+        });
+
+        const target = activeThinkingBlock
+            ? activeThinkingBlock.querySelector('.thinking-body')
+            : chatMessages;
+        target.appendChild(div);
+    }
+
+    scrollToBottom();
+}
+
 function toolArgsLabel(name, args) {
     if (!args) return '';
     if (['write_file', 'read_file', 'edit_file'].includes(name)) return args.path || '';
@@ -222,6 +297,7 @@ function toolArgsLabel(name, args) {
     if (name === 'glob_files') return args.pattern || '';
     if (name === 'grep_files') return args.pattern || '';
     if (name === 'execute_python_code') return '(code)';
+    if (name === 'consult_art_director') return args.request ? args.request.slice(0, 60) + (args.request.length > 60 ? '...' : '') : '';
     return JSON.stringify(args);
 }
 
@@ -291,6 +367,7 @@ function getToolIcon(name) {
         case 'read_file': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
         case 'edit_file': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
         case 'list_files': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
+        case 'consult_art_director': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>';
         default: return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>';
     }
 }
