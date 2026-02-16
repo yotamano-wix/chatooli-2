@@ -89,6 +89,7 @@ async function sendMessage() {
                 session_id: sessionId,
                 engine: 'mastra',
                 model: modelSelect.value || undefined,
+                preview_file: lastWorkspaceEntry || undefined,
             }),
         });
 
@@ -136,7 +137,7 @@ async function sendMessage() {
             } else {
                 appendMessage('agent', responseText);
             }
-            updateSandbox(responseText, finalResponse.code_blocks, finalResponse.files_changed);
+            updateSandbox(responseText, finalResponse.code_blocks, finalResponse.files_changed, finalResponse.preview_file);
         }
 
     } catch (err) {
@@ -153,6 +154,7 @@ async function sendMessage() {
                     session_id: sessionId,
                     engine: 'mastra',
                     model: modelSelect.value || undefined,
+                    preview_file: lastWorkspaceEntry || undefined,
                 }),
             });
             const data = await resp.json();
@@ -179,6 +181,8 @@ function handleSSEEvent(type, data) {
         appendArtDirectorStart();
     } else if (type === 'design_brief') {
         appendDesignBrief(data.brief);
+    } else if (type === 'set_preview') {
+        applyPreviewFile(data.path);
     } else if (type === 'skills') {
         appendSkillsBadges(data.skills);
     } else if (type === 'reasoning_start') {
@@ -298,6 +302,8 @@ function toolArgsLabel(name, args) {
     if (name === 'grep_files') return args.pattern || '';
     if (name === 'execute_python_code') return '(code)';
     if (name === 'consult_art_director') return args.request ? args.request.slice(0, 60) + (args.request.length > 60 ? '...' : '') : '';
+    if (name === 'set_preview') return args.path || '';
+    if (name === 'get_preview_status') return '';
     return JSON.stringify(args);
 }
 
@@ -368,6 +374,8 @@ function getToolIcon(name) {
         case 'edit_file': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
         case 'list_files': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
         case 'consult_art_director': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>';
+        case 'set_preview': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+        case 'get_preview_status': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
         default: return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>';
     }
 }
@@ -506,7 +514,7 @@ function scrollToBottom() {
 
 // ---- Sandbox ----
 
-function updateSandbox(rawResponse, codeBlocks, filesChanged) {
+function updateSandbox(rawResponse, codeBlocks, filesChanged, previewFile) {
     lastCodeBlocks = codeBlocks || [];
     filesChanged = filesChanged || [];
 
@@ -518,7 +526,9 @@ function updateSandbox(rawResponse, codeBlocks, filesChanged) {
         sandboxTabs.style.display = 'flex';
     }
 
-    if (filesChanged.length > 0) {
+    if (previewFile) {
+        lastWorkspaceEntry = previewFile;
+    } else if (filesChanged.length > 0) {
         const htmlFile = filesChanged.find(f =>
             f.endsWith('.html') || f.endsWith('.htm')
         );
@@ -674,6 +684,13 @@ function previewWorkspaceFile(path) {
     lastWorkspaceEntry = path;
     sandboxTabs.style.display = 'flex';
     showPreview();
+}
+
+function applyPreviewFile(filePath) {
+    if (!filePath) return;
+    lastWorkspaceEntry = filePath;
+    sandboxTabs.style.display = 'flex';
+    showPreview(true);
 }
 refreshFilesBtn.addEventListener('click', loadWorkspaceFiles);
 

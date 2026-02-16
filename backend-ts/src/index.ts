@@ -78,6 +78,7 @@ interface ChatBody {
   session_id?: string | null;
   model?: string | null;
   workspace_path?: string | null;
+  preview_file?: string | null;
 }
 
 interface ChatResult {
@@ -96,7 +97,7 @@ async function handleChat(body: ChatBody): Promise<ChatResult> {
   const history = sessions.getSession(sessionId).slice(0, -1);
 
   try {
-    const response = await runAgent(body.message, history, workspacePath, body.model ?? null);
+    const response = await runAgent(body.message, history, workspacePath, body.model ?? null, body.preview_file);
     const filesChanged = await autoSaveHtml(response.code_blocks, response.files_changed, workspacePath);
     sessions.appendToSession(sessionId, "assistant", response.text);
     return {
@@ -213,7 +214,7 @@ app.post("/api/chat/stream", async (c) => {
 
     try {
       for await (const event of streamAgent(
-        body.message, history, workspacePath, body.model ?? null
+        body.message, history, workspacePath, body.model ?? null, body.preview_file
       )) {
         if (event.type === "response") {
           const resp = event.data;

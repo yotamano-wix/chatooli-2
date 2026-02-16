@@ -30,6 +30,7 @@ export interface EngineResponse {
   tool_calls: ToolCallInfo[];
   skills_used: string[];
   design_brief?: string;
+  preview_file?: string;
 }
 
 // ---------- Model resolution ----------
@@ -157,8 +158,20 @@ export async function runArtDirector(
 
 // ---------- Tools ----------
 
-function createMastraTools(workspacePath: string, filesChanged: string[], model: string | null) {
-  const root = workspacePath;
+interface ToolContext {
+  workspacePath: string;
+  filesChanged: string[];
+  model: string | null;
+  /** The file currently shown in the preview iframe (sent by frontend). */
+  currentPreviewFile: string | null;
+  /** Set by set_preview tool — overrides which file the frontend should show. */
+  requestedPreviewFile: string | null;
+}
+
+function createMastraTools(ctx: ToolContext) {
+  const root = ctx.workspacePath;
+  const filesChanged = ctx.filesChanged;
+  const model = ctx.model;
   return {
     read_file: createTool({
       id: "read_file",
@@ -300,6 +313,40 @@ function createMastraTools(workspacePath: string, filesChanged: string[], model:
         }
       },
     }),
+    set_preview: createTool({
+      id: "set_preview",
+      description:
+        "Set which file to show in the preview iframe. Use after writing or editing files " +
+        "to control which HTML file the user sees. The path is relative to the workspace.",
+      inputSchema: z.object({
+        path: z.string().describe("Relative path to the file to preview, e.g. index.html or sketches/demo.html"),
+      }),
+      execute: async (inputData) => {
+        ctx.requestedPreviewFile = inputData.path;
+        return `Preview set to: ${inputData.path}`;
+      },
+    }),
+    get_preview_status: createTool({
+      id: "get_preview_status",
+      description:
+        "Get the current preview state: which file is shown in the preview iframe " +
+        "and which HTML files exist in the workspace. Use to understand what the user " +
+        "is currently looking at before making changes.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const allFiles = await fs.globFiles("**/*.html", root);
+          const htmlFiles = allFiles.trim().split("\n").filter(Boolean);
+          const current = ctx.requestedPreviewFile ?? ctx.currentPreviewFile;
+          return JSON.stringify({
+            current_preview: current ?? "(none)",
+            html_files: htmlFiles,
+          });
+        } catch (e) {
+          return `Error: ${e instanceof Error ? e.message : e}`;
+        }
+      },
+    }),
   };
 }
 
@@ -321,10 +368,10 @@ async function buildAgent(
   message: string,
   workspacePath: string,
   model: string | null,
-  filesChanged: string[],
+  toolCtx: ToolContext,
   designBrief?: string
 ) {
-  const tools = createMastraTools(workspacePath, filesChanged, model);
+  const tools = createMastraTools(toolCtx);
   const resolved = resolveModel(model);
   const systemPrompt = await getSystemPrompt();
   const { names: skillsUsed, context: skillContext } = await getMatchedSkills(message);
@@ -358,9 +405,16 @@ export async function runAgent(
   message: string,
   history: HistoryMessage[],
   workspacePath: string,
-  model: string | null
+  model: string | null,
+  currentPreviewFile?: string | null
 ): Promise<EngineResponse> {
-  const filesChanged: string[] = [];
+  const toolCtx: ToolContext = {
+    workspacePath,
+    filesChanged: [],
+    model,
+    currentPreviewFile: currentPreviewFile ?? null,
+    requestedPreviewFile: null,
+  };
   const toolCalls: ToolCallInfo[] = [];
 
   // First message in session → auto-run Art Director
@@ -377,7 +431,7 @@ export async function runAgent(
   }
 
   const { agent, resolved, skillsUsed } = await buildAgent(
-    message, workspacePath, model, filesChanged, designBrief || undefined
+    message, workspacePath, model, toolCtx, designBrief || undefined
   );
   const messages = buildMessages(history, message);
 
@@ -416,10 +470,11 @@ export async function runAgent(
   return {
     text,
     code_blocks: codeBlocks,
-    files_changed: filesChanged,
+    files_changed: toolCtx.filesChanged,
     tool_calls: toolCalls,
     skills_used: skillsUsed,
     ...(designBrief ? { design_brief: designBrief } : {}),
+    ...(toolCtx.requestedPreviewFile ? { preview_file: toolCtx.requestedPreviewFile } : {}),
   };
 }
 
@@ -428,6 +483,7 @@ export async function runAgent(
 export type SSEEvent =
   | { type: "art_director_start"; data: Record<string, never> }
   | { type: "design_brief"; data: { brief: string } }
+  | { type: "set_preview"; data: { path: string } }
   | { type: "skills"; data: { skills: string[] } }
   | { type: "reasoning_start"; data: Record<string, never> }
   | { type: "reasoning"; data: { text: string } }
@@ -446,8 +502,15 @@ export async function* streamAgent(
   history: HistoryMessage[],
   workspacePath: string,
   model: string | null,
+  currentPreviewFile?: string | null
 ): AsyncGenerator<SSEEvent> {
-  const filesChanged: string[] = [];
+  const toolCtx: ToolContext = {
+    workspacePath,
+    filesChanged: [],
+    model,
+    currentPreviewFile: currentPreviewFile ?? null,
+    requestedPreviewFile: null,
+  };
   const toolCalls: ToolCallInfo[] = [];
 
   // First message in session → auto-run Art Director
@@ -468,7 +531,7 @@ export async function* streamAgent(
   }
 
   const { agent, resolved, skillsUsed } = await buildAgent(
-    message, workspacePath, model, filesChanged, designBrief || undefined
+    message, workspacePath, model, toolCtx, designBrief || undefined
   );
 
   if (skillsUsed.length > 0) {
@@ -542,6 +605,9 @@ export async function* streamAgent(
           const name = (payload.toolName as string) ?? currentToolName;
           toolCalls.push({ name, args: {}, result: truncated });
           yield { type: "tool_result", data: { name, result: truncated } };
+          if (name === "set_preview" && toolCtx.requestedPreviewFile) {
+            yield { type: "set_preview", data: { path: toolCtx.requestedPreviewFile } };
+          }
           break;
         }
         case "step-start": {
@@ -573,10 +639,11 @@ export async function* streamAgent(
       session_id: "",
       text: fullText,
       code_blocks: codeBlocks,
-      files_changed: filesChanged,
+      files_changed: toolCtx.filesChanged,
       tool_calls: toolCalls,
       skills_used: skillsUsed,
       ...(designBrief ? { design_brief: designBrief } : {}),
+      ...(toolCtx.requestedPreviewFile ? { preview_file: toolCtx.requestedPreviewFile } : {}),
     },
   };
 
